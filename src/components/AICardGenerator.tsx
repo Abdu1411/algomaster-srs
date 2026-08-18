@@ -26,12 +26,27 @@ export function AICardGenerator({ onDeckGenerated }: AICardGeneratorProps) {
         body: JSON.stringify({ url, topic })
       });
       
+      const responseText = await response.text();
+      let data: any = null;
+      try {
+        data = responseText ? JSON.parse(responseText) : [];
+      } catch (parseErr) {
+        throw new Error(
+          response.ok 
+            ? 'Server returned invalid response format.' 
+            : `Server error (${response.status}): ${responseText.slice(0, 150)}`
+        );
+      }
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Generation failed with status ${response.status}`);
+        throw new Error((data && data.error) || `Generation failed with status ${response.status}`);
+      }
+
+      const generatedCards = Array.isArray(data) ? data : (data && data.cards) || [];
+      if (!generatedCards.length) {
+        throw new Error('AI generated 0 cards. Please specify a more detailed Dart topic.');
       }
       
-      const generatedCards = await response.json();
       const now = Date.now();
 
       const newDeck: Deck = {
