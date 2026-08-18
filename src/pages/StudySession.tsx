@@ -1,0 +1,477 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useDecks } from '../store';
+import { calculateNextReview, Grade } from '../srs';
+import { Card, CardType } from '../types';
+import ReactMarkdown from 'react-markdown';
+import { ArrowLeft, CheckCircle2, Code2, Loader2, Sparkles, Sliders, Play, RotateCcw, Bot } from 'lucide-react';
+import { CodeEditor } from '../components/CodeEditor';
+import { CustomStudyModal } from '../components/CustomStudyModal';
+import { AskAIModal } from '../components/AskAIModal';
+import { CodeBlock, MarkdownCodeRenderer } from '../components/CodeBlock';
+
+interface SessionCard extends Card {
+  deckId: string;
+}
+
+export function StudySession() {
+  const { deckId } = useParams<{ deckId: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { decks, folders, updateCard, logReview } = useDecks();
+
+  const isAllDecks = deckId === 'all';
+  const isFolder = deckId?.startsWith('folder-');
+  const folderId = isFolder ? deckId.replace('folder-', '') : null;
+  const currentFolder = folders?.find(f => f.id === folderId);
+  const currentDeck = decks.find(d => d.id === deckId);
+
+  const [sessionCards, setSessionCards] = useState<SessionCard[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [code, setCode] = useState('');
+  const [completedCount, setCompletedCount] = useState(0);
+  const [sessionFinished, setSessionFinished] = useState(false);
+
+  // Custom study modal & Ask AI state
+  const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
+  const [isAskAiOpen, setIsAskAiOpen] = useState(false);
+
+  // Evaluation state
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [evalResult, setEvalResult] = useState<{ grade: Grade; feedback: string } | null>(null);
+
+  // Read URL query parameters
+  const mode = searchParams.get('mode') || 'due';
+  const filter = searchParams.get('filter') || (mode === 'all' ? 'all' : 'due');
+  const typesParam = searchParams.get('types');
+  const limitParam = searchParams.get('limit');
+  const shuffleParam = searchParams.get('shuffle');
+  const updateSrsParam = searchParams.get('updateSrs');
+
+  const shouldUpdateSrs = updateSrsParam !== 'false';
+
+  const loadCards = () => {
+    if (decks.length === 0) return;
+
+    let pool: SessionCard[] = [];
+    if (isAllDecks) {
+      pool = decks.flatMap(d => d.cards.map(c => ({ ...c, deckId: d.id })));
+    } else if (isFolder && folderId) {
+      pool = decks.filter(d => d.folderId === folderId).flatMap(d => d.cards.map(c => ({ ...c, deckId: d.id })));
+    } else if (currentDeck) {
+      pool = currentDeck.cards.map(c => ({ ...c, deckId: currentDeck.id }));
+    }
+
+    // Apply filter
+    if (filter === 'due') {
+      pool = pool.filter(c => c.nextReview <= Date.now());
+    } else if (filter === 'types' && typesParam) {
+      const allowedTypes = typesParam.split(',') as CardType[];
+      pool = pool.filter(c => allowedTypes.includes(c.type));
+    } else if (filter === 'hardest') {
+      pool = [...pool].sort((a, b) => a.ease - b.ease || a.reps - b.reps);
+    }
+
+    // Shuffle if enabled
+    if (shuffleParam !== 'false') {
+      pool = [...pool].sort(() => Math.random() - 0.5);
+    }
+
+    // Apply limit if specified
+    if (limitParam && !isNaN(Number(limitParam))) {
+      pool = pool.slice(0, Number(limitParam));
+    }
+
+    setSessionCards(pool);
+    setCurrentIndex(0);
+    setShowAnswer(false);
+    setCode('');
+    setCompletedCount(0);
+    setSessionFinished(false);
+    setEvalResult(null);
+  };
+
+  useEffect(() => {
+    loadCards();
+  }, [decks, deckId, searchParams]);
+
+  const currentCard = sessionCards[currentIndex] as SessionCard | undefined;
+  const isImplementationCard = currentCard?.type === 'Implementation';
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+
+      if (e.code === 'Space' && !showAnswer && !isImplementationCard) {
+        e.preventDefault();
+        setShowAnswer(true);
+      } else if (showAnswer) {
+        if (e.key === '1') {
+          handleGrade('Again');
+        } else if (e.key === '2') {
+          handleGrade('Good');
+        } else if (e.key === '3') {
+          handleGrade('Easy');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showAnswer, isImplementationCard, currentIndex, sessionCards]);
+
+  if (!isAllDecks && !isFolder && !currentDeck && decks.length > 0) {
+    return <div className="p-8 text-center text-slate-500 font-sans">Deck or folder not found</div>;
+  }
+
+  // Finished or Empty State
+  if (sessionFinished || sessionCards.length === 0 || !currentCard) {
+    const totalDeckCards = isAllDecks
+      ? decks.reduce((acc, d) => acc + d.cards.length, 0)
+      : isFolder && folderId
+      ? decks.filter(d => d.folderId === folderId).reduce((acc, d) => acc + d.cards.length, 0)
+      : currentDeck?.cards.length || 0;
+
+    return (
+      <div className="max-w-xl mx-auto mt-16 bg-white/95 rounded-3xl p-10 text-center shadow-[0_12px_40px_rgba(0,0,0,0.06)] border border-slate-200/90 relative overflow-hidden">
+        <div
+          className="absolute inset-0 pointer-events-none opacity-40"
+          style={{ backgroundImage: 'radial-gradient(circle at center, #dbeafe 0%, transparent 70%)' }}
+        ></div>
+        <div className="relative z-10">
+          <div className="w-16 h-16 bg-blue-50 text-blue-600 border border-blue-200 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-[0_4px_20px_rgba(37,99,235,0.15)]">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+
+          <h2 className="text-2xl font-extrabold text-slate-900 mb-2 italic">
+            {completedCount > 0 ? 'Dart Calibration Complete!' : "You're all caught up!"}
+          </h2>
+
+          <p className="text-slate-600 mb-8 font-sans text-sm leading-relaxed max-w-md mx-auto">
+            {completedCount > 0
+              ? `You mastered ${completedCount} Dart card${completedCount > 1 ? 's' : ''} in this study session.`
+              : 'No cards are currently due in this queue. You can practice all cards or customize a focused Dart session below.'}
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-6">
+            {totalDeckCards > 0 && (
+              <button
+                onClick={() => {
+                  navigate(isAllDecks ? '/deck/all?mode=custom&filter=all' : `/deck/${deckId}?mode=custom&filter=all`);
+                }}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-[0_4px_16px_rgba(37,99,235,0.25)] cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                Review All ({totalDeckCards} Cards)
+              </button>
+            )}
+
+            <button
+              onClick={() => setIsCustomModalOpen(true)}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white hover:bg-slate-50 text-blue-600 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 shadow-2xs transition-all cursor-pointer"
+            >
+              <Sliders className="w-4 h-4" />
+              Custom Study
+            </button>
+          </div>
+
+          <button
+            onClick={() => navigate('/')}
+            className="inline-flex items-center justify-center gap-2 px-6 py-2.5 text-slate-500 hover:text-slate-800 font-sans text-xs uppercase tracking-wider transition-all cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Decks
+          </button>
+        </div>
+
+        <CustomStudyModal
+          isOpen={isCustomModalOpen}
+          onClose={() => setIsCustomModalOpen(false)}
+          decks={decks}
+          initialDeckId={deckId}
+        />
+      </div>
+    );
+  }
+
+  const handleGrade = (grade: Grade) => {
+    if (shouldUpdateSrs && currentCard) {
+      const updatedCard = calculateNextReview(currentCard, grade);
+      updateCard(currentCard.deckId, updatedCard);
+      logReview(currentCard.deckId, currentCard.id, grade);
+    }
+
+    setCompletedCount(prev => prev + 1);
+
+    // Move to next card
+    if (currentIndex < sessionCards.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setShowAnswer(false);
+      setCode('');
+      setEvalResult(null);
+    } else {
+      setSessionFinished(true);
+    }
+  };
+
+  const handleSubmitCode = async () => {
+    if (!code.trim()) return;
+    setIsEvaluating(true);
+    setEvalResult(null);
+
+    try {
+      const res = await fetch('/api/evaluate-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: currentCard.front, code, language: 'dart' }),
+      });
+      if (!res.ok) throw new Error('Evaluation failed');
+      const data = await res.json();
+      setEvalResult(data);
+      setShowAnswer(true);
+    } catch (error) {
+      console.error(error);
+      alert('Failed to evaluate Dart code.');
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  // Get current deck title for card
+  const originDeck = decks.find(d => d.id === currentCard.deckId);
+
+  return (
+    <div className="max-w-3xl mx-auto pb-20 mt-4">
+      {/* Session Top Bar */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/')}
+            className="text-slate-500 hover:text-blue-600 inline-flex items-center gap-1.5 transition-colors font-bold text-xs uppercase tracking-wider cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" /> Exit Session
+          </button>
+          {filter !== 'due' && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200">
+              ⚡ Custom Study ({filter})
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={() => setIsAskAiOpen(true)}
+            className="text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-colors px-2.5 py-1 rounded-lg cursor-pointer shadow-2xs"
+            title="Ask AI about this card or concept"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Ask AI
+          </button>
+          <button
+            onClick={() => setIsCustomModalOpen(true)}
+            className="text-slate-500 hover:text-blue-600 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-colors px-2.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+          >
+            <Sliders className="w-3.5 h-3.5" /> Options
+          </button>
+          <span className="text-xs font-mono font-bold text-slate-700 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-2xs">
+            {currentIndex + 1} / {sessionCards.length}
+          </span>
+        </div>
+      </div>
+
+      {/* Progress Bar */}
+      <div className="w-full h-2 bg-slate-200/80 rounded-full mb-6 overflow-hidden shadow-inner">
+        <div
+          className="h-full bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 transition-all duration-300 rounded-full"
+          style={{ width: `${((currentIndex + 1) / sessionCards.length) * 100}%` }}
+        ></div>
+      </div>
+
+      {/* Main Flashcard */}
+      <div className="bg-white rounded-3xl shadow-[0_12px_45px_rgba(0,0,0,0.06)] border border-slate-200/90 overflow-hidden relative">
+        {/* Card Header (Type Badge & Deck info) */}
+        <div className="px-8 py-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center relative z-10">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+              {currentCard.type}
+            </span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200/60">
+              Dart 3.x
+            </span>
+            {isAllDecks && originDeck && (
+              <span className="text-[11px] font-sans font-medium text-slate-500 truncate max-w-[180px]">
+                [{originDeck.title}]
+              </span>
+            )}
+          </div>
+          <span className="text-slate-400 font-mono text-[10px]">ID: {currentCard.id.split('-')[0].toUpperCase()}</span>
+        </div>
+
+        {/* Front Question Content */}
+        <div className="px-8 py-10 relative z-10">
+          <div className="prose prose-slate prose-blue max-w-none text-slate-800 leading-relaxed font-sans mb-6">
+            <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>
+              {currentCard.type === 'Cloze'
+                ? currentCard.front.replace(/{{(?:c\d+::)?([^}:]+)(?:::([^}]+))?}}/g, (match, p1, p2) => {
+                    return `\`[${p2 || '...'}]\``;
+                  })
+                : currentCard.front}
+            </ReactMarkdown>
+          </div>
+
+          {currentCard.codeSnippet && !isImplementationCard && (
+            <div className="mt-4 mb-2">
+              <CodeBlock code={currentCard.codeSnippet} language="dart" />
+            </div>
+          )}
+
+          {/* Dart Code Implementation Area */}
+          {isImplementationCard && !showAnswer && (
+            <div className="mt-8 space-y-4">
+              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm focus-within:border-blue-500 transition-colors">
+                <div className="bg-slate-50 px-4 py-2.5 text-xs font-mono font-bold text-slate-700 flex items-center justify-between border-b border-slate-200">
+                  <div className="flex items-center gap-2 text-blue-600">
+                    <Code2 className="w-4 h-4" />
+                    <span>Dart Implementation Workspace</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Language: Dart 3.x</span>
+                </div>
+                <div className="p-4">
+                  <CodeEditor
+                    value={code}
+                    onChange={setCode}
+                    language="dart"
+                    placeholder="// Write your Dart implementation here... (supports 2-space Tab indentation)"
+                    minHeight="200px"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handleSubmitCode}
+                disabled={isEvaluating || !code.trim()}
+                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_4px_16px_rgba(37,99,235,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none inline-flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isEvaluating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Evaluating Dart Code with AI...
+                  </>
+                ) : (
+                  'Submit Dart Solution for Evaluation'
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Back / Answer Area */}
+        {!isImplementationCard && !showAnswer ? (
+          <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 relative z-10">
+            <button
+              onClick={() => setShowAnswer(true)}
+              className="w-full py-4 bg-white hover:bg-blue-50 border-2 border-blue-500/30 hover:border-blue-500 text-blue-600 font-extrabold uppercase tracking-widest text-xs rounded-2xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Show Answer</span>
+              <kbd className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px] text-slate-500 font-mono font-bold">Space</kbd>
+            </button>
+          </div>
+        ) : showAnswer ? (
+          <div className="border-t border-slate-100 bg-slate-50/50 relative z-10 animate-fadeIn">
+            <div className="px-8 py-8 border-b border-slate-100">
+              <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-4">Dart Analysis & Solution</h3>
+
+              {isImplementationCard && evalResult ? (
+                <div className="space-y-4">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 shadow-2xs text-xs font-bold">
+                    <span className="text-slate-500">AI Evaluation Grade:</span>
+                    <span
+                      className={`font-mono ${
+                        evalResult.grade === 'Easy'
+                          ? 'text-emerald-600'
+                          : evalResult.grade === 'Good'
+                          ? 'text-blue-600'
+                          : 'text-rose-600'
+                      }`}
+                    >
+                      {evalResult.grade}
+                    </span>
+                  </div>
+                  <div className="prose prose-sm prose-slate max-w-none bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+                    <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>{evalResult.feedback}</ReactMarkdown>
+                  </div>
+                </div>
+              ) : (
+                <div className="prose prose-slate prose-blue max-w-none bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
+                  {currentCard.type === 'Cloze' && (
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-sm">
+                      <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>
+                        {currentCard.front.replace(/{{(?:c\d+::)?([^}:]+)(?:::([^}]+))?}}/g, '**$1**')}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                  <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>{currentCard.back}</ReactMarkdown>
+                </div>
+              )}
+            </div>
+
+            {/* SRS Calibration Buttons */}
+            <div className="px-8 py-6">
+              <p className="text-[11px] uppercase tracking-wider text-slate-500 font-bold text-center mb-4">
+                Rate Recall {shouldUpdateSrs ? '' : '(Practice Mode - No Interval Change)'}
+              </p>
+              <div className="grid grid-cols-3 gap-4">
+                <button
+                  onClick={() => handleGrade('Again')}
+                  className="py-3.5 px-3 bg-rose-50 hover:bg-rose-100/90 border border-rose-200 text-rose-700 font-bold rounded-2xl transition-all flex flex-col items-center shadow-2xs group cursor-pointer hover:-translate-y-0.5"
+                >
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-xs uppercase tracking-wider">Again</span>
+                    <kbd className="px-1.5 py-0.2 bg-white/80 border border-rose-300 rounded text-[9px] font-mono text-rose-600">1</kbd>
+                  </div>
+                  <span className="text-[10px] text-rose-500 font-mono">&lt; 10 min</span>
+                </button>
+                <button
+                  onClick={() => handleGrade('Good')}
+                  className="py-3.5 px-3 bg-blue-50 hover:bg-blue-100/90 border border-blue-200 text-blue-700 font-bold rounded-2xl transition-all flex flex-col items-center shadow-2xs group cursor-pointer hover:-translate-y-0.5"
+                >
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-xs uppercase tracking-wider">Good</span>
+                    <kbd className="px-1.5 py-0.2 bg-white/80 border border-blue-300 rounded text-[9px] font-mono text-blue-600">2</kbd>
+                  </div>
+                  <span className="text-[10px] text-blue-500 font-mono">1-2 days</span>
+                </button>
+                <button
+                  onClick={() => handleGrade('Easy')}
+                  className="py-3.5 px-3 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-200 text-emerald-700 font-bold rounded-2xl transition-all flex flex-col items-center shadow-2xs group cursor-pointer hover:-translate-y-0.5"
+                >
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-xs uppercase tracking-wider">Easy</span>
+                    <kbd className="px-1.5 py-0.2 bg-white/80 border border-emerald-300 rounded text-[9px] font-mono text-emerald-600">3</kbd>
+                  </div>
+                  <span className="text-[10px] text-emerald-500 font-mono">4+ days</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Custom Study Modal */}
+      <CustomStudyModal
+        isOpen={isCustomModalOpen}
+        onClose={() => setIsCustomModalOpen(false)}
+        decks={decks}
+        initialDeckId={deckId}
+      />
+
+      {/* Ask AI Modal */}
+      <AskAIModal
+        isOpen={isAskAiOpen}
+        onClose={() => setIsAskAiOpen(false)}
+        initialQuery={currentCard ? `Can you explain the key concept and Dart patterns behind this card:\n"${currentCard.front}"` : ''}
+        contextInfo={currentCard ? `Card Archetype: ${currentCard.type}\nFront Question: ${currentCard.front}\nBack Answer: ${currentCard.back}` : undefined}
+      />
+    </div>
+  );
+}

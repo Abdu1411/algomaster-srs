@@ -1,0 +1,246 @@
+import Dexie, { Table } from 'dexie';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { Deck, Card, Folder } from './types';
+
+export interface ReviewLog {
+  id?: number;
+  deckId: string;
+  cardId: string;
+  grade: string;
+  timestamp: number;
+}
+
+class AlgoDatabase extends Dexie {
+  decks!: Table<Deck, string>;
+  reviews!: Table<ReviewLog, number>;
+  folders!: Table<Folder, string>;
+
+  constructor() {
+    super('AlgoMasterDB');
+    this.version(2).stores({
+      decks: 'id, title, createdAt',
+      reviews: '++id, deckId, cardId, timestamp'
+    });
+    this.version(3).stores({
+      decks: 'id, title, folderId, createdAt',
+      reviews: '++id, deckId, cardId, timestamp',
+      folders: 'id, name, createdAt'
+    });
+  }
+}
+
+export const db = new AlgoDatabase();
+
+export function useDecks() {
+  const decks = useLiveQuery(() => db.decks.toArray(), []) || [];
+  const folders = useLiveQuery(() => db.folders.toArray(), []) || [];
+  const reviews = useLiveQuery(() => db.reviews.toArray(), []) || [];
+
+  const addDeck = async (deck: Deck) => {
+    await db.decks.add(deck);
+  };
+
+  const deleteDeck = async (id: string) => {
+    await db.decks.delete(id);
+  };
+
+  const updateDeck = async (deck: Deck) => {
+    await db.decks.put(deck);
+  };
+
+  const renameDeck = async (deckId: string, title: string) => {
+    const deck = await db.decks.get(deckId);
+    if (deck && title.trim()) {
+      deck.title = title.trim();
+      await db.decks.put(deck);
+    }
+  };
+
+  const updateCard = async (deckId: string, updatedCard: Card) => {
+    const deck = await db.decks.get(deckId);
+    if (deck) {
+      deck.cards = deck.cards.map(card => card.id === updatedCard.id ? updatedCard : card);
+      await db.decks.put(deck);
+    }
+  };
+
+  const addCardToDeck = async (deckId: string, card: Card) => {
+    const deck = await db.decks.get(deckId);
+    if (deck) {
+      deck.cards = [...deck.cards, card];
+      await db.decks.put(deck);
+    }
+  };
+
+  // Folder Operations
+  const addFolder = async (name: string, color?: string): Promise<Folder> => {
+    const newFolder: Folder = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      color: color || '#2563eb',
+      createdAt: Date.now()
+    };
+    await db.folders.add(newFolder);
+    return newFolder;
+  };
+
+  const updateFolder = async (id: string, name: string, color?: string) => {
+    const folder = await db.folders.get(id);
+    if (folder) {
+      folder.name = name.trim();
+      if (color) folder.color = color;
+      await db.folders.put(folder);
+    }
+  };
+
+  const deleteFolder = async (id: string, deleteDecksInside: boolean = false) => {
+    const allDecks = await db.decks.toArray();
+    for (const d of allDecks) {
+      if (d.folderId === id) {
+        if (deleteDecksInside) {
+          await db.decks.delete(d.id);
+        } else {
+          d.folderId = undefined;
+          await db.decks.put(d);
+        }
+      }
+    }
+    await db.folders.delete(id);
+  };
+
+  const moveDeckToFolder = async (deckId: string, folderId?: string) => {
+    const deck = await db.decks.get(deckId);
+    if (deck) {
+      deck.folderId = folderId || undefined;
+      await db.decks.put(deck);
+    }
+  };
+  
+  const logReview = async (deckId: string, cardId: string, grade: string) => {
+    await db.reviews.add({
+      deckId,
+      cardId,
+      grade,
+      timestamp: Date.now()
+    });
+  };
+
+  // Reset all study statistics and review logs
+  const resetAllStats = async () => {
+    await db.reviews.clear();
+    const allDecks = await db.decks.toArray();
+    for (const deck of allDecks) {
+      deck.cards = deck.cards.map(card => ({
+        ...card,
+        interval: 0,
+        ease: 2.5,
+        reps: 0,
+        nextReview: Date.now()
+      }));
+      await db.decks.put(deck);
+    }
+  };
+
+  // Stats calculation
+  const getStats = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    // Calculate Streak
+    let streak = 0;
+    const reviewDays = new Set(reviews.map(r => {
+      const d = new Date(r.timestamp);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    }));
+
+    if (reviewDays.size > 0) {
+      for (let i = 0; i < 365; i++) {
+        const checkDay = today - (i * dayMs);
+        if (reviewDays.has(checkDay)) {
+          streak++;
+        } else if (i === 0) {
+          // it's okay if they haven't studied yet today
+          continue;
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Calculate Weekly Velocity (Last 7 Days)
+    const weekData = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName, idx) => {
+      return { day: dayName, cardsReviewed: 0, _dateIndex: idx };
+    });
+    
+    // Sort weekData to start 6 days ago and end today
+    const sortedWeekData = [];
+    for (let i = 6; i >= 0; i--) {
+      const targetDate = new Date(today - (i * dayMs));
+      const baseObj = weekData[targetDate.getDay()];
+      sortedWeekData.push({ day: baseObj.day, cardsReviewed: 0, timestamp: targetDate.getTime() });
+    }
+
+    let weeklyVelocity = 0;
+    reviews.forEach(r => {
+      if (r.timestamp >= today - (6 * dayMs)) {
+        weeklyVelocity++;
+        const rDate = new Date(r.timestamp);
+        const rDayStart = new Date(rDate.getFullYear(), rDate.getMonth(), rDate.getDate()).getTime();
+        const bin = sortedWeekData.find(w => w.timestamp === rDayStart);
+        if (bin) bin.cardsReviewed++;
+      }
+    });
+
+    // Calculate Mastery per deck (as surrogate for category)
+    const masteryData = decks.map(deck => {
+      const totalCards = deck.cards.length;
+      if (totalCards === 0) return { subject: deck.title.substring(0, 12), level: 0, fullMark: 100 };
+      
+      // Calculate based on ease and reps for reviewed cards (unreviewed cards with reps === 0 count as 0%)
+      const totalScore = deck.cards.reduce((acc, card) => {
+        if (!card.reps || card.reps === 0) return acc;
+        const easeScore = Math.min(100, (card.ease / 3.0) * 100);
+        const repScore = Math.min(100, card.reps * 10);
+        return acc + ((easeScore * 0.7) + (repScore * 0.3));
+      }, 0);
+      
+      return {
+        subject: deck.title.substring(0, 10),
+        level: Math.round(totalScore / totalCards),
+        fullMark: 100
+      };
+    }).slice(0, 6);
+
+    // Fill with empty if less than 3 decks to make chart look okay
+    while (masteryData.length < 3) {
+      masteryData.push({ subject: '---', level: 0, fullMark: 100 });
+    }
+
+    return {
+      streak,
+      weeklyVelocity,
+      activityData: sortedWeekData,
+      masteryData
+    };
+  };
+
+  return { 
+    decks, 
+    folders,
+    reviews, 
+    addDeck, 
+    deleteDeck, 
+    updateDeck,
+    renameDeck,
+    updateCard, 
+    addCardToDeck, 
+    addFolder,
+    updateFolder,
+    deleteFolder,
+    moveDeckToFolder,
+    logReview, 
+    resetAllStats, 
+    stats: getStats() 
+  };
+}
