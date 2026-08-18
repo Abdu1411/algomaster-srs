@@ -15,6 +15,11 @@ const port = process.env.PORT || 3000;
 const app = express();
 app.use(express.json());
 
+// Health check endpoint for cloud load balancers and deployment verification
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function extractTextFromUrl(url: string) {
