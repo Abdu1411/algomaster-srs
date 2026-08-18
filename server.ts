@@ -37,6 +37,28 @@ async function extractTextFromUrl(url: string) {
     console.error('Error fetching URL:', error);
     throw new Error('Failed to fetch content from URL');
   }
+function safeParseJSONArray(rawText: string) {
+  let text = (rawText || '').trim();
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  }
+  
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    // If output was truncated at token limit, recover all complete card objects
+    const firstBracket = text.indexOf('[');
+    const lastObjectEnd = text.lastIndexOf('}');
+    if (firstBracket !== -1 && lastObjectEnd !== -1 && lastObjectEnd > firstBracket) {
+      try {
+        const candidate = text.substring(firstBracket, lastObjectEnd + 1) + ']';
+        return JSON.parse(candidate);
+      } catch (err2) {
+        // Continue to throw original error if recovery fails
+      }
+    }
+    throw e;
+  }
 }
 
 app.post('/api/generate-deck', async (req, res) => {
@@ -58,28 +80,26 @@ app.post('/api/generate-deck', async (req, res) => {
     DO NOT use Python, JavaScript, Java, C++, or any language other than Dart.
     
     Topic: ${topic || 'Dart Algorithms and Data Structures'}
-    Content context (if any): ${contextText.slice(0, 20000)}
+    Content context (if any): ${contextText.slice(0, 15000)}
     
-    Create exactly 30 high-quality flashcards covering the topic thoroughly and in depth. YOU MUST INCLUDE MULTIPLE CARDS OF EACH OF THE FOLLOWING 9 TYPES in your output:
+    Create a comprehensive deck of 20 to 25 high-quality flashcards covering the topic thoroughly. INCLUDE MULTIPLE CARDS OF THE FOLLOWING ARCHETYPES:
     1. Concept / "Why" (Understand the core idea in Dart context)
     2. Complexity (Time/space complexity)
     3. Pattern trigger (Recognize when to use it in Dart/Flutter apps)
-    4. Cloze deletion (Remember key steps). IMPORTANT: The front MUST use standard Anki cloze syntax, like: "The time complexity is {{c1::O(N)}}". Do not use blank underscores.
+    4. Cloze deletion (Remember key steps using Anki {{c1::...}} syntax)
     5. Comparison (Distinguish similar algorithms in Dart)
     6. Trace / visual (Simulate on small Dart data input)
     7. Invariant / proof (Know why it works)
     8. Debugging (Learn common Dart implementation mistakes)
-    9. Implementation prompt (Schedule actual Dart coding - e.g. "Implement function \`int binarySearch(List<int> sortedList, int target)\` in Dart")
-    
-    Distribute the 30 cards across these 9 types evenly to build a comprehensive mastery deck.
+    9. Implementation prompt (Schedule actual Dart coding in Dart)
     
     Return a JSON array of objects.
     Each object must have:
-    - id: a unique string
+    - id: a unique string (e.g. "dart-1", "dart-2")
     - type: one of ["Concept", "Complexity", "Pattern", "Cloze", "Comparison", "Trace", "Invariant", "Debugging", "Implementation"]
-    - front: the front side of the card (question/prompt, in markdown with dart code blocks \`\`\`dart)
-    - back: the back side of the card (answer, in markdown with dart code blocks \`\`\`dart)
-    - codeSnippet: (optional) a Dart code snippet to display on the front for Debugging or Trace cards.
+    - front: the front side of the card (question/prompt in markdown with dart code blocks \`\`\`dart)
+    - back: the back side of the card (answer in markdown with dart code blocks \`\`\`dart)
+    - codeSnippet: (optional) a Dart code snippet for Debugging or Trace cards
     
     Ensure the output is ONLY valid JSON.
     `;
@@ -88,6 +108,7 @@ app.post('/api/generate-deck', async (req, res) => {
       model: 'gemini-3.6-flash',
       contents: prompt,
       config: {
+        maxOutputTokens: 8192,
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.ARRAY,
@@ -109,14 +130,10 @@ app.post('/api/generate-deck', async (req, res) => {
       }
     });
 
-    let text = response.text || '[]';
-    
-    // Sometimes the model wraps JSON in markdown blocks even with responseMimeType
-    if (text.trim().startsWith('```')) {
-      text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-    }
+    const text = response.text || '[]';
+    const parsedCards = safeParseJSONArray(text);
 
-    res.json(JSON.parse(text));
+    res.json(parsedCards);
   } catch (error: any) {
     console.error('Generate Deck Error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate content' });
