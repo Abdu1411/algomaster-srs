@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { StudySession } from './pages/StudySession';
+import { LessonView } from './pages/LessonView';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/deck/:deckId" element={<StudySession />} />
+          <Route path="/lesson/:lessonId" element={<LessonView />} />
         </Routes>
       </Layout>
     </BrowserRouter>

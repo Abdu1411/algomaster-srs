@@ -255,6 +255,90 @@ app.post('/api/ask-ai', async (req, res) => {
   }
 });
 
+app.post('/api/generate-lesson', async (req, res) => {
+  try {
+    const { url, topic } = req.body;
+    let contextText = '';
+    
+    if (url) {
+      contextText = await extractTextFromUrl(url);
+    }
+
+    const effectiveTopic = (topic && topic.trim()) 
+      ? topic.trim() 
+      : (url ? 'Computer Science Lecture Note' : 'Advanced Data Structures & Algorithms');
+
+    const prompt = `
+    You are an elite computer science professor and senior software engineer creating definitive lecture notes.
+    
+    MISSION:
+    Create comprehensive, structured study lecture notes from the computer science content or topic provided below.
+    Format these as a professor or senior engineer would prepare notes for students, with clear organization, logical progression, and a balance between theory and implementation.
+    
+    CONTENT REQUIREMENTS:
+    1. Core Concepts & Architecture: Extract and thoroughly explain all key computer science concepts, data structures, algorithms, design patterns, and architectural principles.
+    2. Code & Implementation: Provide clean, well-commented, and idiomatic Dart (and polyglot where helpful) code snippets to demonstrate how concepts work in practice.
+    3. Efficiency Analysis: Always analyze the time and space complexity of algorithms and data structures using Big-O notation ($O(N)$, $O(\\log N)$, $O(1)$, etc.).
+    4. Terminology: Define all specialized jargon (e.g., idempotency, concurrency, cache invalidation, cache line locality, branch prediction) clearly.
+    5. Systems & Trade-offs: Connect software choices to foundational hardware principles (memory hierarchy, CPU cache, heap vs stack allocation) and discuss engineering trade-offs (e.g., time vs. space, consistency vs. availability).
+    
+    FORMATTING GUIDELINES:
+    - Use appropriate markdown headings (# Title, ## Section, ### Subsections) to create a logical hierarchical structure.
+    - Format all mathematical expressions, complexity bounds, and boolean logic using LaTeX (enclosed in $ or $$ delimiters, e.g. $O(N \\log N)$).
+    - Present important theoretical points as concise, complete sentences rather than endless shallow bullet points.
+    - Use explicit markdown code blocks with language identifiers (e.g. \`\`\`dart) for all code snippets.
+    - Bold or italicize key technical terms when first introduced.
+    - Include text-based Mermaid.js diagrams (\`\`\`mermaid ... \`\`\`) whenever a concept benefits from visual representation (flowcharts, pointer layouts, tree structures, state transitions).
+    
+    EDUCATIONAL APPROACH:
+    - Deconstruction: Break complex systems or algorithms into digestible components (e.g., explain the base case and recurrence relation before showing the complete solution).
+    - Practical Application: Provide illuminating, real-world engineering examples (e.g. database indexing, network routing, garbage collection).
+    - Insight Boxes: Include "Deep Dive" and "Common Pitfall" callout blocks (e.g. \`> **Deep Dive:** ...\` or \`> **⚠️ Common Pitfall:** ...\`) highlighting edge cases and bug traps.
+    
+    TOPIC:
+    ${effectiveTopic}
+    
+    SOURCE CONTENT:
+    ${contextText ? contextText.slice(0, 30000) : 'Generate comprehensive lecture notes based on the topic.'}
+    
+    OUTPUT:
+    Return a JSON object with:
+    - title: A concise, authoritative title for the lecture note (e.g. "Lecture 04: Self-Balancing Red-Black Trees & Cache Locality")
+    - topic: The primary subject category
+    - content: The complete, exhaustive lecture notes in rich Markdown.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: prompt,
+      config: {
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            topic: { type: Type.STRING },
+            content: { type: Type.STRING }
+          },
+          required: ["title", "topic", "content"]
+        }
+      }
+    });
+
+    let text = response.text || '{}';
+    if (text.trim().startsWith('```')) {
+      text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    }
+
+    const data = JSON.parse(text);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Generate Lesson Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate CS lecture notes' });
+  }
+});
+
 async function startServer() {
   if (isProd) {
     app.use(express.static(path.join(__dirname, 'dist')));

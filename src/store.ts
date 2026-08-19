@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Deck, Card, Folder } from './types';
+import { Deck, Card, Folder, Lesson } from './types';
 
 export interface ReviewLog {
   id?: number;
@@ -14,6 +14,7 @@ class AlgoDatabase extends Dexie {
   decks!: Table<Deck, string>;
   reviews!: Table<ReviewLog, number>;
   folders!: Table<Folder, string>;
+  lessons!: Table<Lesson, string>;
 
   constructor() {
     super('AlgoMasterDB');
@@ -26,6 +27,12 @@ class AlgoDatabase extends Dexie {
       reviews: '++id, deckId, cardId, timestamp',
       folders: 'id, name, createdAt'
     });
+    this.version(4).stores({
+      decks: 'id, title, folderId, createdAt',
+      reviews: '++id, deckId, cardId, timestamp',
+      folders: 'id, name, createdAt',
+      lessons: 'id, title, folderId, createdAt'
+    });
   }
 }
 
@@ -35,6 +42,7 @@ export function useDecks() {
   const decks = useLiveQuery(() => db.decks.toArray(), []) || [];
   const folders = useLiveQuery(() => db.folders.toArray(), []) || [];
   const reviews = useLiveQuery(() => db.reviews.toArray(), []) || [];
+  const lessons = useLiveQuery(() => db.lessons.toArray(), []) || [];
 
   const addDeck = async (deck: Deck) => {
     await db.decks.add(deck);
@@ -105,6 +113,17 @@ export function useDecks() {
         }
       }
     }
+    const allLessons = await db.lessons.toArray();
+    for (const l of allLessons) {
+      if (l.folderId === id) {
+        if (deleteDecksInside) {
+          await db.lessons.delete(l.id);
+        } else {
+          l.folderId = undefined;
+          await db.lessons.put(l);
+        }
+      }
+    }
     await db.folders.delete(id);
   };
 
@@ -113,6 +132,35 @@ export function useDecks() {
     if (deck) {
       deck.folderId = folderId || undefined;
       await db.decks.put(deck);
+    }
+  };
+
+  // Lesson Operations
+  const addLesson = async (lesson: Lesson) => {
+    await db.lessons.add(lesson);
+  };
+
+  const updateLesson = async (lesson: Lesson) => {
+    await db.lessons.put(lesson);
+  };
+
+  const deleteLesson = async (id: string) => {
+    await db.lessons.delete(id);
+  };
+
+  const renameLesson = async (id: string, title: string) => {
+    const lesson = await db.lessons.get(id);
+    if (lesson && title.trim()) {
+      lesson.title = title.trim();
+      await db.lessons.put(lesson);
+    }
+  };
+
+  const moveLessonToFolder = async (lessonId: string, folderId?: string) => {
+    const lesson = await db.lessons.get(lessonId);
+    if (lesson) {
+      lesson.folderId = folderId || undefined;
+      await db.lessons.put(lesson);
     }
   };
   
@@ -228,6 +276,7 @@ export function useDecks() {
   return { 
     decks, 
     folders,
+    lessons,
     reviews, 
     addDeck, 
     deleteDeck, 
@@ -239,6 +288,11 @@ export function useDecks() {
     updateFolder,
     deleteFolder,
     moveDeckToFolder,
+    addLesson,
+    updateLesson,
+    deleteLesson,
+    renameLesson,
+    moveLessonToFolder,
     logReview, 
     resetAllStats, 
     stats: getStats() 

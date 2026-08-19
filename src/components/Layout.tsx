@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BrainCircuit, Flame, FolderGit2, Layers, Sparkles } from 'lucide-react';
+import { BrainCircuit, Flame, FolderGit2, Layers, Sparkles, BookOpen } from 'lucide-react';
 import { useDecks } from '../store';
 import { AskAIModal } from './AskAIModal';
 
@@ -8,6 +8,8 @@ export function Header() {
   const { stats } = useDecks();
   const location = useLocation();
   const isAllDecksView = location.search.includes('view=all');
+  const isLessonsView = location.search.includes('view=lessons');
+  const isFoldersView = !isAllDecksView && !isLessonsView && !location.search.includes('folder=');
   const [isAskAiOpen, setIsAskAiOpen] = useState(false);
 
   return (
@@ -30,11 +32,11 @@ export function Header() {
           </div>
         </Link>
 
-        <nav className="flex items-center gap-3 sm:gap-4">
+        <nav className="flex items-center gap-2 sm:gap-3">
           <Link
             to="/?view=folders"
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-              !isAllDecksView
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+              isFoldersView
                 ? 'bg-blue-50 text-blue-600 border border-blue-200/80 shadow-2xs'
                 : 'text-slate-600 hover:text-blue-600 hover:bg-slate-100/70 border border-transparent'
             }`}
@@ -45,7 +47,7 @@ export function Header() {
 
           <Link
             to="/?view=all"
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
               isAllDecksView
                 ? 'bg-blue-50 text-blue-600 border border-blue-200/80 shadow-2xs'
                 : 'text-slate-600 hover:text-blue-600 hover:bg-slate-100/70 border border-transparent'
@@ -55,9 +57,21 @@ export function Header() {
             All Decks
           </Link>
 
+          <Link
+            to="/?view=lessons"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+              isLessonsView
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs'
+                : 'text-slate-600 hover:text-emerald-700 hover:bg-slate-100/70 border border-transparent'
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            Lessons
+          </Link>
+
           <button
             onClick={() => setIsAskAiOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200/80 shadow-2xs cursor-pointer group"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200/80 shadow-2xs cursor-pointer group"
             title="Ask AlgoMaster AI anything about Dart algorithms"
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-600 group-hover:rotate-12 transition-transform" />

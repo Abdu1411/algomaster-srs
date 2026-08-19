@@ -37,3 +37,13 @@ export interface Deck {
   cards: Card[];
   createdAt: number;
 }
+
+export interface Lesson {
+  id: string;
+  title: string;
+  topic: string;
+  sourceUrl?: string;
+  content: string;
+  folderId?: string;
+  createdAt: number;
+}
