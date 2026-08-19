@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import {
   BookOpen,
   ArrowLeft,
@@ -382,7 +385,8 @@ export function LessonView() {
       {/* Note Content Section */}
       <article className="bg-white/95 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-200/90 p-6 sm:p-10 backdrop-blur-md">
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
           components={markdownComponents}
         >
           {lesson.content}
