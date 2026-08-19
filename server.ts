@@ -257,26 +257,66 @@ app.post('/api/ask-ai', async (req, res) => {
 
 app.post('/api/generate-lesson', async (req, res) => {
   try {
-    const { url, topic } = req.body;
-    let contextText = '';
+    const { url, urls, rawText, topic } = req.body;
     
-    if (url) {
-      contextText = await extractTextFromUrl(url);
+    // Normalize source list
+    const sourceList: string[] = [];
+    if (Array.isArray(urls)) {
+      urls.forEach((u: string) => {
+        if (u && typeof u === 'string' && u.trim()) sourceList.push(u.trim());
+      });
+    } else if (typeof urls === 'string' && urls.trim()) {
+      urls.split(/[\n,]+/).forEach((u: string) => {
+        if (u.trim()) sourceList.push(u.trim());
+      });
+    }
+    if (url && typeof url === 'string' && url.trim() && !sourceList.includes(url.trim())) {
+      sourceList.unshift(url.trim());
+    }
+
+    let combinedContext = '';
+    const validSourcesUsed: string[] = [];
+
+    // Fetch all URLs in parallel
+    if (sourceList.length > 0) {
+      const fetchResults = await Promise.allSettled(
+        sourceList.map(async (srcUrl) => {
+          const text = await extractTextFromUrl(srcUrl);
+          return { url: srcUrl, text };
+        })
+      );
+
+      fetchResults.forEach((resItem, idx) => {
+        const targetUrl = sourceList[idx];
+        if (resItem.status === 'fulfilled' && resItem.value.text) {
+          validSourcesUsed.push(targetUrl);
+          combinedContext += `\n\n=== SOURCE [${idx + 1}]: ${targetUrl} ===\n${resItem.value.text.slice(0, 15000)}\n`;
+        } else {
+          console.warn(`Could not extract from URL: ${targetUrl}`);
+        }
+      });
+    }
+
+    // Add pasted raw text / transcripts if provided
+    if (rawText && typeof rawText === 'string' && rawText.trim()) {
+      combinedContext += `\n\n=== SOURCE [Pasted Transcript / Supplementary Notes]: ===\n${rawText.trim().slice(0, 20000)}\n`;
+      validSourcesUsed.push('Pasted Text / Lecture Notes');
     }
 
     const effectiveTopic = (topic && topic.trim()) 
       ? topic.trim() 
-      : (url ? 'Computer Science Lecture Note' : 'Advanced Data Structures & Algorithms');
+      : (sourceList.length > 0 ? 'Computer Science Multi-Source Lecture Note' : 'Advanced Data Structures & Algorithms');
 
     const prompt = `
-    You are an elite computer science professor and senior software engineer creating definitive lecture notes.
+    You are an elite computer science professor and senior software engineer creating definitive lecture notes from multiple multimedia sources.
     
     MISSION:
-    Create comprehensive, structured study lecture notes from the computer science content or topic provided below.
+    Synthesize comprehensive, structured study lecture notes from all the computer science sources provided below (multiple articles, documentation, repository references, and lecture notes).
+    Merge the best explanations, architectural diagrams, algorithms, and practical considerations into one master study document.
     Format these as a professor or senior engineer would prepare notes for students, with clear organization, logical progression, and a balance between theory and implementation.
     
     CONTENT REQUIREMENTS:
-    1. Core Concepts & Architecture: Extract and thoroughly explain all key computer science concepts, data structures, algorithms, design patterns, and architectural principles.
+    1. Core Concepts & Architecture: Extract and thoroughly explain all key computer science concepts, data structures, algorithms, design patterns, and architectural principles across the provided sources.
     2. Code & Implementation: Provide clean, well-commented, and idiomatic Dart (and polyglot where helpful) code snippets to demonstrate how concepts work in practice.
     3. Efficiency Analysis: Always analyze the time and space complexity of algorithms and data structures using Big-O notation ($O(N)$, $O(\\log N)$, $O(1)$, etc.).
     4. Terminology: Define all specialized jargon (e.g., idempotency, concurrency, cache invalidation, cache line locality, branch prediction) clearly.
@@ -298,8 +338,8 @@ app.post('/api/generate-lesson', async (req, res) => {
     TOPIC:
     ${effectiveTopic}
     
-    SOURCE CONTENT:
-    ${contextText ? contextText.slice(0, 30000) : 'Generate comprehensive lecture notes based on the topic.'}
+    COMBINED SOURCE CONTENTS (${validSourcesUsed.length} Sources Provided):
+    ${combinedContext ? combinedContext.slice(0, 35000) : 'Generate comprehensive lecture notes based on the topic.'}
     
     OUTPUT:
     Return a JSON object with:
@@ -332,7 +372,11 @@ app.post('/api/generate-lesson', async (req, res) => {
     }
 
     const data = JSON.parse(text);
-    res.json(data);
+    res.json({
+      ...data,
+      sources: validSourcesUsed.length > 0 ? validSourcesUsed : (sourceList.length > 0 ? sourceList : undefined),
+      sourceUrl: validSourcesUsed[0] || sourceList[0] || undefined
+    });
   } catch (error: any) {
     console.error('Generate Lesson Error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate CS lecture notes' });

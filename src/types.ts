@@ -43,6 +43,7 @@ export interface Lesson {
   title: string;
   topic: string;
   sourceUrl?: string;
+  sources?: string[];
   content: string;
   folderId?: string;
   createdAt: number;
