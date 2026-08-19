@@ -23,9 +23,21 @@ import {
   Code2
 } from 'lucide-react';
 import { useDecks } from '../store';
-import { Card, Deck } from '../types';
+import { Card, Deck, CardType } from '../types';
 import { MarkdownCodeRenderer } from './CodeBlock';
 import { useActiveView } from '../context/ActiveViewContext';
+
+const cardArchetypes: { type: CardType; label: string; icon: string; desc: string }[] = [
+  { type: 'Concept', label: 'Concept', icon: '💡', desc: '"Why" & Core Intuition' },
+  { type: 'Complexity', label: 'Complexity', icon: '⚡', desc: 'Big-O Time & Space Bounds' },
+  { type: 'Pattern', label: 'Pattern', icon: '🧩', desc: 'Algorithmic Pattern' },
+  { type: 'Cloze', label: 'Cloze', icon: '📝', desc: 'Fill-in-the-Blank [___]' },
+  { type: 'Comparison', label: 'Comparison', icon: '⚖️', desc: 'Trade-offs & Alternatives' },
+  { type: 'Trace', label: 'Trace', icon: '🔍', desc: 'Step-by-Step State Trace' },
+  { type: 'Invariant', label: 'Invariant', icon: '🛡️', desc: 'Loop & Structural Invariants' },
+  { type: 'Debugging', label: 'Debugging', icon: '🐛', desc: 'Bug Traps & Pitfalls' },
+  { type: 'Implementation', label: 'Implementation', icon: '💻', desc: 'Dart Code Challenge' },
+];
 
 interface AskAIModalProps {
   isOpen: boolean;
@@ -47,6 +59,11 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
   const [cardSaved, setCardSaved] = useState(false);
   const [includeContext, setIncludeContext] = useState(true);
   const [showContextPreview, setShowContextPreview] = useState(false);
+
+  // Card Archetype Converter State
+  const [selectedCardType, setSelectedCardType] = useState<CardType>('Concept');
+  const [isFormattingCard, setIsFormattingCard] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
 
   // Deck selector state if converting to flashcard
   const [selectedDeckId, setSelectedDeckId] = useState<string>(decks.length > 0 ? decks[0].id : 'new');
@@ -126,14 +143,25 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSaveAsCard = async () => {
+  // Helper to extract code snippets from markdown if present
+  const extractCodeSnippet = (text: string): string | undefined => {
+    const match = /```(?:dart)?\n([\s\S]*?)```/.exec(text);
+    return match ? match[1].trim() : undefined;
+  };
+
+  const handleSaveCard = async (archetype: CardType, frontText?: string, backText?: string, snippet?: string) => {
     if (!lastInquiry || !answer) return;
+
+    const front = frontText || lastInquiry;
+    const back = backText || answer;
+    const codeSnippet = snippet || extractCodeSnippet(answer);
 
     const newCard: Card = {
       id: crypto.randomUUID(),
-      type: 'Concept',
-      front: lastInquiry,
-      back: answer,
+      type: archetype,
+      front,
+      back,
+      codeSnippet,
       nextReview: Date.now(),
       interval: 0,
       ease: 2.5,
@@ -141,20 +169,63 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
     };
 
     if (selectedDeckId === 'new') {
+      const targetTitle = newDeckTitle.trim() || 'AI Insights';
       const newDeck: Deck = {
         id: crypto.randomUUID(),
-        title: newDeckTitle.trim() || 'AI Insights',
+        title: targetTitle,
         createdAt: Date.now(),
         cards: [newCard]
       };
       await addDeck(newDeck);
       setSelectedDeckId(newDeck.id);
+      setSaveSuccessMessage(`Saved as "${archetype}" in new deck "${targetTitle}"!`);
     } else {
       await addCardToDeck(selectedDeckId, newCard);
+      const targetDeck = decks.find(d => d.id === selectedDeckId);
+      setSaveSuccessMessage(`Saved as "${archetype}" in "${targetDeck?.title || 'Deck'}"!`);
     }
 
     setCardSaved(true);
-    setTimeout(() => setCardSaved(false), 3000);
+    setTimeout(() => {
+      setCardSaved(false);
+      setSaveSuccessMessage('');
+    }, 4000);
+  };
+
+  // AI-powered intelligent card converter for specific archetype
+  const handleAIFormatAndSave = async () => {
+    if (!lastInquiry || !answer || isFormattingCard) return;
+
+    setIsFormattingCard(true);
+    try {
+      const response = await fetch('/api/format-card-archetype', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: lastInquiry,
+          answer,
+          targetType: selectedCardType
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI formatting failed with status ${response.status}`);
+      }
+
+      const formatted = await response.json();
+      await handleSaveCard(
+        selectedCardType,
+        formatted.front || lastInquiry,
+        formatted.back || answer,
+        formatted.codeSnippet
+      );
+    } catch (err: any) {
+      console.warn('AI card format fallback to standard:', err);
+      // Fallback to standard save
+      await handleSaveCard(selectedCardType);
+    } finally {
+      setIsFormattingCard(false);
+    }
   };
 
   React.useEffect(() => {
@@ -395,43 +466,111 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
                 <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>{answer}</ReactMarkdown>
               </div>
 
-              {/* Save As Flashcard Action */}
-              <div className="pt-4 border-t border-slate-200/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border">
-                <div className="flex items-center gap-2">
-                  <label className="text-[11px] font-bold text-slate-700 whitespace-nowrap">
-                    Save to Deck:
-                  </label>
-                  <select
-                    value={selectedDeckId}
-                    onChange={(e) => setSelectedDeckId(e.target.value)}
-                    className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 font-sans focus:outline-none focus:border-purple-500 cursor-pointer"
-                  >
-                    {decks.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.title} ({d.cards.length} cards)
-                      </option>
-                    ))}
-                    <option value="new">+ Create New Deck ("AI Insights")</option>
-                  </select>
+              {/* Convert to Flashcard Archetype Section */}
+              <div className="pt-4 border-t border-slate-200/90 space-y-3 bg-white p-4 sm:p-5 rounded-2xl border border-purple-100 shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800">
+                        Convert AI Answer to Flashcard Archetype
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-sans">
+                        Pick a specialized active recall archetype to save this insight into your SRS library.
+                      </p>
+                    </div>
+                  </div>
+
+                  {saveSuccessMessage && (
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200 animate-fadeIn flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5" />
+                      {saveSuccessMessage}
+                    </span>
+                  )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleSaveAsCard}
-                  className="px-3.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold transition-all shadow-2xs inline-flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {cardSaved ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      Saved to Deck!
-                    </>
-                  ) : (
-                    <>
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      Save as Flashcard
-                    </>
-                  )}
-                </button>
+                {/* Archetype Selector Chips */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 pt-1">
+                  {cardArchetypes.map((arch) => {
+                    const isSelected = selectedCardType === arch.type;
+                    return (
+                      <button
+                        key={arch.type}
+                        type="button"
+                        onClick={() => setSelectedCardType(arch.type)}
+                        className={`px-2.5 py-2 rounded-xl text-left transition-all border cursor-pointer flex flex-col gap-0.5 ${
+                          isSelected
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-sm ring-2 ring-purple-400/30'
+                            : 'bg-slate-50 hover:bg-purple-50/70 text-slate-700 hover:text-purple-900 border-slate-200/80 hover:border-purple-200'
+                        }`}
+                        title={arch.desc}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <span>{arch.icon}</span>
+                          <span>{arch.label}</span>
+                        </div>
+                        <span className={`text-[10px] truncate ${isSelected ? 'text-purple-100' : 'text-slate-400 font-sans'}`}>
+                          {arch.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Destination Deck and Action Buttons */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+                  <div className="flex items-center gap-2 flex-1 max-w-sm">
+                    <label className="text-[11px] font-bold text-slate-700 whitespace-nowrap">
+                      Target Deck:
+                    </label>
+                    <select
+                      value={selectedDeckId}
+                      onChange={(e) => setSelectedDeckId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 font-sans focus:outline-none focus:border-purple-500 cursor-pointer"
+                    >
+                      {decks.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          📁 {d.title} ({d.cards.length} cards)
+                        </option>
+                      ))}
+                      <option value="new">+ Create New Deck ("AI Insights")</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveCard(selectedCardType)}
+                      disabled={isFormattingCard}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs"
+                      title="Save question and answer as card immediately"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5 text-slate-500" />
+                      Quick Save
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleAIFormatAndSave}
+                      disabled={isFormattingCard}
+                      className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      {isFormattingCard ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Structuring as {selectedCardType}...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          AI Format & Save as {selectedCardType}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

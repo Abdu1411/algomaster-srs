@@ -264,6 +264,84 @@ app.post('/api/ask-ai', async (req, res) => {
   }
 });
 
+app.post('/api/format-card-archetype', async (req, res) => {
+  try {
+    const { question, answer, targetType } = req.body;
+    if (!question || !answer) {
+      return res.status(400).json({ error: 'Question and answer are required.' });
+    }
+
+    const archetype = targetType || 'Concept';
+
+    const prompt = `
+    You are an expert spaced repetition system (SRS) instructional designer and Dart algorithm coach.
+    
+    Convert the following AI inquiry & answer into an optimized, high-yield SRS flashcard of archetype: "${archetype}".
+    
+    ORIGINAL INQUIRY:
+    "${question}"
+    
+    ORIGINAL AI ANSWER:
+    "${answer}"
+    
+    TARGET ARCHETYPE:
+    "${archetype}"
+    
+    ARCHETYPE REQUIREMENTS:
+    - Concept: "Why" & core intuition. Front poses an active recall question. Back provides concise, authoritative explanation.
+    - Complexity: Big-O analysis. Front asks for time/space complexity and worst-case bounds. Back gives exact Big-O and mathematical proof ($O(N)$, $O(\\log N)$).
+    - Pattern: Recognition of algorithmic patterns (Two Pointers, Monotonic Queue, Sliding Window, Bit Manipulation, etc.).
+    - Cloze: Fill-in-the-blank active recall using [___] for the key formula, invariant, or method call.
+    - Comparison: Structured head-to-head comparison highlighting time/space trade-offs between two approaches.
+    - Trace: Step-by-step state simulation or recursion tree trace.
+    - Invariant: Loop or structural invariants that guarantee correctness.
+    - Debugging: A subtle bug trap, edge case, or Dart null-safety pitfall with correction.
+    - Implementation: A coding challenge in modern idiomatic Dart with starter signature and test assertions.
+    
+    OUTPUT SCHEMA:
+    Return a JSON object with:
+    - type: "${archetype}"
+    - front: Refined front prompt for active recall (Markdown).
+    - back: Refined back explanation for active recall (Markdown).
+    - codeSnippet: (Optional) Dart code snippet if applicable.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            type: { type: Type.STRING },
+            front: { type: Type.STRING },
+            back: { type: Type.STRING },
+            codeSnippet: { type: Type.STRING }
+          },
+          required: ["type", "front", "back"]
+        }
+      }
+    });
+
+    let text = response.text || '{}';
+    if (text.trim().startsWith('```')) {
+      text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    }
+
+    const cardData = JSON.parse(text);
+    res.json({
+      type: archetype,
+      front: cardData.front || question,
+      back: cardData.back || answer,
+      codeSnippet: cardData.codeSnippet || undefined
+    });
+  } catch (error: any) {
+    console.error('Format Card Archetype Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to convert to card archetype' });
+  }
+});
+
 app.post('/api/generate-lesson', async (req, res) => {
   try {
     const { url, urls, rawText, topic } = req.body;
