@@ -463,7 +463,13 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
 
               {/* Markdown Content */}
               <div className="text-slate-800 text-xs sm:text-sm font-sans leading-relaxed space-y-3 prose prose-slate max-w-none prose-headings:font-bold prose-headings:text-slate-900">
-                <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>{answer}</ReactMarkdown>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{ code: MarkdownCodeRenderer }}
+                >
+                  {answer}
+                </ReactMarkdown>
               </div>
 
               {/* Convert to Flashcard Archetype Section */}

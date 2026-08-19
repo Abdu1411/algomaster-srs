@@ -4,6 +4,10 @@ import { useDecks } from '../store';
 import { calculateNextReview, Grade } from '../srs';
 import { Card, CardType } from '../types';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { ArrowLeft, CheckCircle2, Code2, Loader2, Sparkles, Sliders, Play, RotateCcw, Bot } from 'lucide-react';
 import { CodeEditor } from '../components/CodeEditor';
 import { CustomStudyModal } from '../components/CustomStudyModal';
@@ -330,7 +334,11 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
         {/* Front Question Content */}
         <div className="px-8 py-10 relative z-10">
           <div className="prose prose-slate prose-blue max-w-none text-slate-800 leading-relaxed font-sans mb-6">
-            <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={{ code: MarkdownCodeRenderer }}
+            >
               {currentCard.type === 'Cloze'
                 ? currentCard.front.replace(/{{(?:c\d+::)?([^}:]+)(?:::([^}]+))?}}/g, (match, p1, p2) => {
                     return `\`[${p2 || '...'}]\``;
@@ -417,19 +425,35 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
                     </span>
                   </div>
                   <div className="prose prose-sm prose-slate max-w-none bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-                    <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>{evalResult.feedback}</ReactMarkdown>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{ code: MarkdownCodeRenderer }}
+                    >
+                      {evalResult.feedback}
+                    </ReactMarkdown>
                   </div>
                 </div>
               ) : (
                 <div className="prose prose-slate prose-blue max-w-none bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
                   {currentCard.type === 'Cloze' && (
                     <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-sm">
-                      <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                        components={{ code: MarkdownCodeRenderer }}
+                      >
                         {currentCard.front.replace(/{{(?:c\d+::)?([^}:]+)(?:::([^}]+))?}}/g, '**$1**')}
                       </ReactMarkdown>
                     </div>
                   )}
-                  <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>{currentCard.back}</ReactMarkdown>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={{ code: MarkdownCodeRenderer }}
+                  >
+                    {currentCard.back}
+                  </ReactMarkdown>
                 </div>
               )}
             </div>
