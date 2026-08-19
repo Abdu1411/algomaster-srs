@@ -19,7 +19,7 @@ export function StudySession() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { decks, folders, updateCard, logReview } = useDecks();
-  const { setActiveResource } = useActiveView();
+  const { setActiveResource, openAskAi } = useActiveView();
 
   const isAllDecks = deckId === 'all';
   const isFolder = deckId?.startsWith('folder-');
@@ -34,9 +34,8 @@ export function StudySession() {
   const [completedCount, setCompletedCount] = useState(0);
   const [sessionFinished, setSessionFinished] = useState(false);
 
-  // Custom study modal & Ask AI state
+  // Custom study modal state
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
-  const [isAskAiOpen, setIsAskAiOpen] = useState(false);
 
   const currentCard = sessionCards[currentIndex];
 
@@ -289,7 +288,7 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
 
         <div className="flex items-center gap-2 sm:gap-3">
           <button
-            onClick={() => setIsAskAiOpen(true)}
+            onClick={() => openAskAi(currentCard ? `Can you explain the key concept and Dart patterns behind this card:\n"${currentCard.front}"` : undefined)}
             className="text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-colors px-2.5 py-1 rounded-lg cursor-pointer shadow-2xs"
             title="Ask AI about this card or concept"
           >
@@ -490,14 +489,6 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
         onClose={() => setIsCustomModalOpen(false)}
         decks={decks}
         initialDeckId={deckId}
-      />
-
-      {/* Ask AI Modal */}
-      <AskAIModal
-        isOpen={isAskAiOpen}
-        onClose={() => setIsAskAiOpen(false)}
-        initialQuery={currentCard ? `Can you explain the key concept and Dart patterns behind this card:\n"${currentCard.front}"` : ''}
-        contextInfo={currentCard ? `Card Archetype: ${currentCard.type}\nFront Question: ${currentCard.front}\nBack Answer: ${currentCard.back}` : undefined}
       />
     </div>
   );
