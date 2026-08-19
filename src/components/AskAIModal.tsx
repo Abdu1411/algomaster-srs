@@ -48,8 +48,6 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
     'Explain Breadth-First Search on a Graph in Dart'
   ];
 
-  if (!isOpen) return null;
-
   const handleSubmit = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
     const queryToSend = customQuery || inquiry;
@@ -135,6 +133,8 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
