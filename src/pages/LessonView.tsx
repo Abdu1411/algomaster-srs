@@ -28,11 +28,13 @@ import {
 import { useDecks } from '../store';
 import { MarkdownCodeRenderer } from '../components/CodeBlock';
 import { Deck, Card } from '../types';
+import { useActiveView } from '../context/ActiveViewContext';
 
 export function LessonView() {
   const { lessonId } = useParams<{ lessonId: string }>();
   const navigate = useNavigate();
   const { lessons, folders, deleteLesson, updateLesson, addDeck } = useDecks();
+  const { setActiveResource, openAskAi } = useActiveView();
 
   const lesson = lessons.find((l) => l.id === lessonId);
   const parentFolder = folders.find((f) => f.id === lesson?.folderId);
@@ -41,6 +43,29 @@ export function LessonView() {
   const [isSynthesizingCards, setIsSynthesizingCards] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
+
+  React.useEffect(() => {
+    if (lesson) {
+      setActiveResource({
+        title: lesson.title,
+        type: 'lesson',
+        contextText: `CURRENT CS LECTURE NOTE VIEWED BY USER:
+Title: ${lesson.title}
+Subject/Topic: ${lesson.topic}
+Sources & Citations: ${lesson.sources?.join(', ') || lesson.sourceUrl || 'N/A'}
+
+FULL NOTE CONTENT:
+${lesson.content}`,
+        suggestedPrompts: [
+          `Summarize the key algorithmic concepts in "${lesson.title}"`,
+          'Explain the time complexity and systems trade-offs',
+          'Quiz me on this lesson with 3 conceptual questions',
+          'Provide an advanced Dart pattern implementation'
+        ]
+      });
+    }
+    return () => setActiveResource(null);
+  }, [lesson, setActiveResource]);
 
   if (!lesson) {
     return (
@@ -249,6 +274,15 @@ export function LessonView() {
         </Link>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => openAskAi(`Can you summarize the core principles and Big-O trade-offs of "${lesson.title}"?`)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer group"
+            title="Ask AI about this note"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-600 group-hover:rotate-12 transition-transform" />
+            Ask AI About Note
+          </button>
+
           <button
             onClick={handleCopyMarkdown}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer"

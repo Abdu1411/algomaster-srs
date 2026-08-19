@@ -33,6 +33,7 @@ import { ManualCardCreator } from '../components/ManualCardCreator';
 import { LessonGenerator } from '../components/LessonGenerator';
 import { CustomStudyModal } from '../components/CustomStudyModal';
 import { Deck, Folder, Lesson } from '../types';
+import { useActiveView } from '../context/ActiveViewContext';
 
 export function Home() {
   const navigate = useNavigate();
@@ -54,6 +55,30 @@ export function Home() {
     renameLesson,
     moveLessonToFolder
   } = useDecks();
+  const { setActiveResource } = useActiveView();
+
+  React.useEffect(() => {
+    setActiveResource({
+      title: 'AlgoMaster SRS Library & Dashboard',
+      type: 'dashboard',
+      contextText: `CURRENT USER LIBRARY SUMMARY:
+Total Decks: ${decks.length}
+Total Cards: ${decks.reduce((acc, d) => acc + d.cards.length, 0)}
+Folders (${folders.length}): ${folders.map(f => f.name).join(', ') || 'None'}
+Decks Overview:
+${decks.map(d => `- Deck "${d.title}": ${d.cards.length} cards`).join('\n') || 'No decks yet'}
+
+Lessons / Notes (${lessons.length}):
+${lessons.map(l => `- "${l.title}" [Topic: ${l.topic}]`).join('\n') || 'No lecture notes yet'}`,
+      suggestedPrompts: [
+        'What should I study or review next based on my decks?',
+        'Suggest a new topic or algorithm for my next study session',
+        'Summarize the core themes covered in my library',
+        'Generate a diagnostic quiz spanning all my decks'
+      ]
+    });
+    return () => setActiveResource(null);
+  }, [decks, folders, lessons, setActiveResource]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const currentViewParam = searchParams.get('view');

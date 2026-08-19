@@ -8,17 +8,20 @@ import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { StudySession } from './pages/StudySession';
 import { LessonView } from './pages/LessonView';
+import { ActiveViewProvider } from './context/ActiveViewContext';
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/deck/:deckId" element={<StudySession />} />
-          <Route path="/lesson/:lessonId" element={<LessonView />} />
-        </Routes>
-      </Layout>
-    </BrowserRouter>
+    <ActiveViewProvider>
+      <BrowserRouter>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/deck/:deckId" element={<StudySession />} />
+            <Route path="/lesson/:lessonId" element={<LessonView />} />
+          </Routes>
+        </Layout>
+      </BrowserRouter>
+    </ActiveViewProvider>
   );
 }

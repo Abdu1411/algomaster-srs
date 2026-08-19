@@ -7,8 +7,8 @@ import ReactMarkdown from 'react-markdown';
 import { ArrowLeft, CheckCircle2, Code2, Loader2, Sparkles, Sliders, Play, RotateCcw, Bot } from 'lucide-react';
 import { CodeEditor } from '../components/CodeEditor';
 import { CustomStudyModal } from '../components/CustomStudyModal';
-import { AskAIModal } from '../components/AskAIModal';
 import { CodeBlock, MarkdownCodeRenderer } from '../components/CodeBlock';
+import { useActiveView } from '../context/ActiveViewContext';
 
 interface SessionCard extends Card {
   deckId: string;
@@ -19,6 +19,7 @@ export function StudySession() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { decks, folders, updateCard, logReview } = useDecks();
+  const { setActiveResource } = useActiveView();
 
   const isAllDecks = deckId === 'all';
   const isFolder = deckId?.startsWith('folder-');
@@ -36,6 +37,33 @@ export function StudySession() {
   // Custom study modal & Ask AI state
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
   const [isAskAiOpen, setIsAskAiOpen] = useState(false);
+
+  const currentCard = sessionCards[currentIndex];
+
+  useEffect(() => {
+    if (currentCard) {
+      setActiveResource({
+        title: `${currentDeck?.title || 'Study Session'} — ${currentCard.type} Card`,
+        type: 'flashcard',
+        contextText: `CURRENT FLASHCARD BEING STUDIED BY USER:
+Deck Name: ${currentDeck?.title || 'Mixed Study Session'}
+Card Type: ${currentCard.type}
+Front Question:
+${currentCard.front}
+
+${showAnswer ? `Back Solution:\n${currentCard.back}\n` : 'Back Solution: [Currently hidden during recall]\n'}
+${currentCard.codeSnippet ? `Sample Code Snippet:\n\`\`\`dart\n${currentCard.codeSnippet}\n\`\`\`\n` : ''}
+${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\n` : ''}`,
+        suggestedPrompts: [
+          `Explain the key invariant and intuition for this ${currentCard.type} card`,
+          'How does this algorithm execute step-by-step in memory?',
+          'What is the tightest time and space complexity bound?',
+          'Can you review or debug my code in the editor?'
+        ]
+      });
+    }
+    return () => setActiveResource(null);
+  }, [currentCard, currentDeck, showAnswer, code, setActiveResource]);
 
   // Evaluation state
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -96,7 +124,6 @@ export function StudySession() {
     loadCards();
   }, [decks, deckId, searchParams]);
 
-  const currentCard = sessionCards[currentIndex] as SessionCard | undefined;
   const isImplementationCard = currentCard?.type === 'Implementation';
 
   useEffect(() => {

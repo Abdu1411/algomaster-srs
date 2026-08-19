@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import {
   Sparkles,
   Send,
@@ -9,14 +13,19 @@ import {
   Check,
   Bot,
   PlusCircle,
+  Eye,
+  FileText,
+  Layers,
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
   HelpCircle,
-  Code2,
-  RotateCcw,
-  Zap
+  Code2
 } from 'lucide-react';
 import { useDecks } from '../store';
 import { Card, Deck } from '../types';
 import { MarkdownCodeRenderer } from './CodeBlock';
+import { useActiveView } from '../context/ActiveViewContext';
 
 interface AskAIModalProps {
   isOpen: boolean;
@@ -27,6 +36,7 @@ interface AskAIModalProps {
 
 export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: AskAIModalProps) {
   const { decks, addDeck, addCardToDeck } = useDecks();
+  const { activeResource } = useActiveView();
 
   const [inquiry, setInquiry] = useState(initialQuery);
   const [isLoading, setIsLoading] = useState(false);
@@ -35,18 +45,43 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [cardSaved, setCardSaved] = useState(false);
+  const [includeContext, setIncludeContext] = useState(true);
+  const [showContextPreview, setShowContextPreview] = useState(false);
 
   // Deck selector state if converting to flashcard
   const [selectedDeckId, setSelectedDeckId] = useState<string>(decks.length > 0 ? decks[0].id : 'new');
   const [newDeckTitle, setNewDeckTitle] = useState('AI Insights');
 
-  const presetQueries = [
+  // Compute effective context
+  const effectiveContext = contextInfo || (includeContext ? activeResource?.contextText : undefined);
+
+  // Dynamic context-aware query suggestions
+  const defaultQueries = [
     'How do I implement a Trie in Dart?',
     'What is the time complexity of Dart SplayTreeMap?',
     'When should I use Two Pointers vs Sliding Window?',
-    'How does Dart manage list resizing amortized O(1)?',
     'Explain Breadth-First Search on a Graph in Dart'
   ];
+
+  const contextQueries = activeResource?.suggestedPrompts || (
+    activeResource?.type === 'flashcard' ? [
+      'Explain the key intuition and invariant for this card',
+      'How does this work under the hood in memory?',
+      'Can you give me an alternative Dart implementation?',
+      'Test me with a variation of this question'
+    ] : activeResource?.type === 'lesson' ? [
+      'Summarize the core takeaways and Big-O complexities',
+      'Explain the systems trade-offs in this note',
+      'Generate 3 active recall questions from these notes',
+      'Show an interactive Dart example for this algorithm'
+    ] : defaultQueries
+  );
+
+  React.useEffect(() => {
+    if (initialQuery) {
+      setInquiry(initialQuery);
+    }
+  }, [initialQuery]);
 
   const handleSubmit = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
@@ -65,7 +100,7 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inquiry: queryToSend.trim(),
-          context: contextInfo
+          context: effectiveContext
         })
       });
 
@@ -137,8 +172,8 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-fadeIn overflow-y-auto">
+      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden relative m-auto">
         {/* Glow accent */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500"></div>
 
@@ -154,11 +189,11 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
                   AlgoMaster AI Assistant
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                  Dart & DSA Tutor
+                  Full Context Active
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-sans">
-                Ask any algorithmic inquiry, time complexity question, or Dart pattern doubt
+                Gemini 3.6 Flash with full access to your currently viewed flashcards, notes, & code
               </p>
             </div>
           </div>
@@ -174,6 +209,52 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
             </button>
           </div>
         </div>
+
+        {/* Currently Viewed Resource Context Banner */}
+        {activeResource && (
+          <div className="bg-gradient-to-r from-purple-50/90 via-indigo-50/80 to-blue-50/70 border-b border-purple-100 px-6 py-2.5 flex flex-col gap-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-medium text-slate-800">
+                <div className="w-5 h-5 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center text-xs">
+                  {activeResource.type === 'lesson' ? <BookOpen className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+                </div>
+                <span>
+                  <strong className="text-purple-900 uppercase tracking-wider text-[10px] font-mono mr-1">Currently Viewing:</strong>
+                  <span className="text-slate-800 font-bold truncate max-w-sm inline-block align-bottom">{activeResource.title}</span>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeContext}
+                    onChange={(e) => setIncludeContext(e.target.checked)}
+                    className="rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
+                  />
+                  Allow AI Context Access
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setShowContextPreview(!showContextPreview)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 hover:text-purple-800 cursor-pointer"
+                >
+                  <Eye className="w-3 h-3" />
+                  {showContextPreview ? 'Hide Context' : 'Preview Context'}
+                  {showContextPreview ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Context Data Preview Drawer */}
+            {showContextPreview && (
+              <div className="p-3 bg-white/90 rounded-xl border border-purple-200 text-[11px] font-mono text-slate-700 max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner">
+                {activeResource.contextText}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Content Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
@@ -207,7 +288,7 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
                   }
                 }}
                 rows={3}
-                placeholder="e.g. How does Dart implement SplayTreeMap? Compare time complexities of ListQueue vs DoubleLinkedQueue..."
+                placeholder="Ask anything about the currently viewed note, flashcard, or Dart algorithms..."
                 className="w-full px-4 py-3 pb-12 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-slate-800 text-xs font-sans placeholder-slate-400 transition-all resize-none shadow-2xs"
               />
               <div className="absolute right-3 bottom-3 flex items-center gap-2">
@@ -243,8 +324,10 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
 
             {/* Quick Inspiration Pills */}
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-1">Suggestions:</span>
-              {presetQueries.map((q) => (
+              <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-1">
+                {activeResource ? 'Contextual Prompts:' : 'Suggestions:'}
+              </span>
+              {contextQueries.map((q) => (
                 <button
                   key={q}
                   type="button"
@@ -252,7 +335,7 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
                     setInquiry(q);
                     handleSubmit(undefined, q);
                   }}
-                  className="text-[11px] px-2.5 py-1 bg-slate-50 hover:bg-purple-50 text-slate-600 hover:text-purple-700 border border-slate-200 hover:border-purple-200 rounded-lg font-sans transition-all cursor-pointer truncate max-w-[240px]"
+                  className="text-[11px] px-2.5 py-1 bg-slate-50 hover:bg-purple-50 text-slate-600 hover:text-purple-700 border border-slate-200 hover:border-purple-200 rounded-lg font-sans transition-all cursor-pointer truncate max-w-[280px]"
                   title={q}
                 >
                   {q}
