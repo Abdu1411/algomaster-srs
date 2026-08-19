@@ -172,28 +172,28 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-fadeIn overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden relative m-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 md:p-8 bg-slate-950/70 backdrop-blur-md animate-fadeIn">
+      <div className="bg-white border border-slate-200/90 rounded-3xl w-full max-w-4xl lg:max-w-5xl h-[90vh] max-h-[880px] flex flex-col shadow-[0_25px_80px_rgba(0,0,0,0.35)] overflow-hidden relative animate-scaleIn my-auto">
         {/* Glow accent */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500"></div>
 
         {/* Header */}
-        <div className="px-6 py-4 sm:py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+        <div className="px-6 py-4 sm:py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-500/10 to-indigo-500/10 text-purple-600 flex items-center justify-center border border-purple-200/80 shadow-2xs">
-              <Bot className="w-5 h-5" />
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-500/10 to-indigo-500/10 text-purple-600 flex items-center justify-center border border-purple-200/80 shadow-2xs">
+              <Bot className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-extrabold text-slate-900 uppercase italic tracking-wide">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 uppercase italic tracking-wide">
                   AlgoMaster AI Assistant
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                  Full Context Active
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                  Gemini 3.6 Flash
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-sans">
-                Gemini 3.6 Flash with full access to your currently viewed flashcards, notes, & code
+                Full-screen pop-up AI assistant with real-time access to your active flashcards, notes, & code
               </p>
             </div>
           </div>
@@ -201,10 +201,10 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
               title="Close / Exit modal (Esc)"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
               <span>Exit</span>
             </button>
           </div>
@@ -212,44 +212,44 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
 
         {/* Currently Viewed Resource Context Banner */}
         {activeResource && (
-          <div className="bg-gradient-to-r from-purple-50/90 via-indigo-50/80 to-blue-50/70 border-b border-purple-100 px-6 py-2.5 flex flex-col gap-1.5 text-xs">
-            <div className="flex items-center justify-between">
+          <div className="bg-gradient-to-r from-purple-50/95 via-indigo-50/85 to-blue-50/75 border-b border-purple-100/80 px-6 py-3 flex flex-col gap-2 text-xs shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 font-medium text-slate-800">
-                <div className="w-5 h-5 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center text-xs">
-                  {activeResource.type === 'lesson' ? <BookOpen className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+                <div className="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs shadow-2xs">
+                  {activeResource.type === 'lesson' ? <BookOpen className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
                 </div>
                 <span>
-                  <strong className="text-purple-900 uppercase tracking-wider text-[10px] font-mono mr-1">Currently Viewing:</strong>
-                  <span className="text-slate-800 font-bold truncate max-w-sm inline-block align-bottom">{activeResource.title}</span>
+                  <strong className="text-purple-900 uppercase tracking-wider text-[10px] font-mono mr-1.5">Active View Context:</strong>
+                  <span className="text-slate-800 font-bold">{activeResource.title}</span>
                 </span>
               </div>
 
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer select-none">
+              <div className="flex items-center gap-3 ml-auto">
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer select-none bg-white/70 px-2.5 py-1 rounded-lg border border-purple-200/60 shadow-2xs">
                   <input
                     type="checkbox"
                     checked={includeContext}
                     onChange={(e) => setIncludeContext(e.target.checked)}
                     className="rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
                   />
-                  Allow AI Context Access
+                  AI Reads Active Screen
                 </label>
 
                 <button
                   type="button"
                   onClick={() => setShowContextPreview(!showContextPreview)}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 hover:text-purple-800 cursor-pointer"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 hover:text-purple-800 cursor-pointer bg-white/70 px-2.5 py-1 rounded-lg border border-purple-200/60 shadow-2xs"
                 >
-                  <Eye className="w-3 h-3" />
+                  <Eye className="w-3.5 h-3.5" />
                   {showContextPreview ? 'Hide Context' : 'Preview Context'}
-                  {showContextPreview ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  {showContextPreview ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
 
             {/* Context Data Preview Drawer */}
             {showContextPreview && (
-              <div className="p-3 bg-white/90 rounded-xl border border-purple-200 text-[11px] font-mono text-slate-700 max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner">
+              <div className="p-3.5 bg-white rounded-xl border border-purple-200 text-xs font-mono text-slate-700 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner animate-fadeIn">
                 {activeResource.contextText}
               </div>
             )}
