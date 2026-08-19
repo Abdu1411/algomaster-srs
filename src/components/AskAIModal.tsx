@@ -124,6 +124,18 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
     setTimeout(() => setCardSaved(false), 3000);
   };
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
       <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden relative">
@@ -131,7 +143,7 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500"></div>
 
         {/* Header */}
-        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+        <div className="px-6 py-4 sm:py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-500/10 to-indigo-500/10 text-purple-600 flex items-center justify-center border border-purple-200/80 shadow-2xs">
               <Bot className="w-5 h-5" />
@@ -150,22 +162,40 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              title="Close / Exit modal (Esc)"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Exit</span>
+            </button>
+          </div>
         </div>
 
         {/* Content Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
           {/* Inquiry Input Area */}
           <form onSubmit={(e) => handleSubmit(e)} className="space-y-3">
-            <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-bold flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-              Your Inquiry / Question
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] text-slate-500 uppercase tracking-widest font-bold flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                Your Inquiry / Question
+              </label>
+
+              {inquiry && (
+                <button
+                  type="button"
+                  onClick={() => setInquiry('')}
+                  className="text-[11px] font-semibold text-slate-400 hover:text-rose-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                  title="Clear text field"
+                >
+                  <X className="w-3 h-3" /> Clear Text
+                </button>
+              )}
+            </div>
 
             <div className="relative">
               <textarea
@@ -178,10 +208,19 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
                 }}
                 rows={3}
                 placeholder="e.g. How does Dart implement SplayTreeMap? Compare time complexities of ListQueue vs DoubleLinkedQueue..."
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-slate-800 text-xs font-sans placeholder-slate-400 transition-all resize-none shadow-2xs"
+                className="w-full px-4 py-3 pb-12 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-slate-800 text-xs font-sans placeholder-slate-400 transition-all resize-none shadow-2xs"
               />
               <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">Ctrl+Enter to send</span>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-3 py-1.5 bg-slate-200/80 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-all inline-flex items-center gap-1 cursor-pointer"
+                  title="Exit AI Assistant"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Exit
+                </button>
+
                 <button
                   type="submit"
                   disabled={isLoading || !inquiry.trim()}
@@ -313,6 +352,24 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
               </div>
             </div>
           )}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+          <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+            Press <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-600 font-bold">Esc</kbd> to exit
+          </span>
+
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <X className="w-3.5 h-3.5" />
+              Exit AI Assistant
+            </button>
+          </div>
         </div>
       </div>
     </div>
