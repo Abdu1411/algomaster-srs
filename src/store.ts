@@ -18,6 +18,10 @@ class AlgoDatabase extends Dexie {
 
   constructor() {
     super('AlgoMasterDB');
+    this.version(1).stores({
+      decks: 'id, title, createdAt',
+      reviews: '++id, deckId, cardId, timestamp'
+    });
     this.version(2).stores({
       decks: 'id, title, createdAt',
       reviews: '++id, deckId, cardId, timestamp'
@@ -39,10 +43,15 @@ class AlgoDatabase extends Dexie {
 export const db = new AlgoDatabase();
 
 export function useDecks() {
-  const decks = useLiveQuery(() => db.decks.toArray(), []) || [];
-  const folders = useLiveQuery(() => db.folders.toArray(), []) || [];
-  const reviews = useLiveQuery(() => db.reviews.toArray(), []) || [];
-  const lessons = useLiveQuery(() => db.lessons.toArray(), []) || [];
+  const rawDecks = useLiveQuery(() => db.decks.toArray(), [], []) || [];
+  const rawFolders = useLiveQuery(() => db.folders.toArray(), [], []) || [];
+  const rawReviews = useLiveQuery(() => db.reviews.toArray(), [], []) || [];
+  const rawLessons = useLiveQuery(() => db.lessons.toArray(), [], []) || [];
+
+  const decks = Array.isArray(rawDecks) ? rawDecks : [];
+  const folders = Array.isArray(rawFolders) ? rawFolders : [];
+  const reviews = Array.isArray(rawReviews) ? rawReviews : [];
+  const lessons = Array.isArray(rawLessons) ? rawLessons : [];
 
   const addDeck = async (deck: Deck) => {
     await db.decks.add(deck);
@@ -241,20 +250,21 @@ export function useDecks() {
     });
 
     // Calculate Mastery per deck (as surrogate for category)
-    const masteryData = decks.map(deck => {
-      const totalCards = deck.cards.length;
-      if (totalCards === 0) return { subject: deck.title.substring(0, 12), level: 0, fullMark: 100 };
+    const masteryData = (decks || []).map(deck => {
+      const cards = Array.isArray(deck?.cards) ? deck.cards : [];
+      const totalCards = cards.length;
+      if (totalCards === 0) return { subject: (deck?.title || 'Deck').substring(0, 12), level: 0, fullMark: 100 };
       
       // Calculate based on ease and reps for reviewed cards (unreviewed cards with reps === 0 count as 0%)
-      const totalScore = deck.cards.reduce((acc, card) => {
-        if (!card.reps || card.reps === 0) return acc;
-        const easeScore = Math.min(100, (card.ease / 3.0) * 100);
-        const repScore = Math.min(100, card.reps * 10);
+      const totalScore = cards.reduce((acc, card) => {
+        if (!card?.reps || card.reps === 0) return acc;
+        const easeScore = Math.min(100, (((card.ease || 2.5)) / 3.0) * 100);
+        const repScore = Math.min(100, (card.reps || 0) * 10);
         return acc + ((easeScore * 0.7) + (repScore * 0.3));
       }, 0);
       
       return {
-        subject: deck.title.substring(0, 10),
+        subject: (deck?.title || 'Deck').substring(0, 10),
         level: Math.round(totalScore / totalCards),
         fullMark: 100
       };

@@ -90,10 +90,14 @@ export function Home() {
   const [deckToRename, setDeckToRename] = useState<Deck | null>(null);
   const [renameDeckTitle, setRenameDeckTitle] = useState('');
 
-  const currentFolder = folders.find(f => f.id === activeFolderId);
+  const safeDecks = Array.isArray(decks) ? decks : [];
+  const safeFolders = Array.isArray(folders) ? folders : [];
+  const safeLessons = Array.isArray(lessons) ? lessons : [];
 
-  const totalCards = decks.reduce((acc, d) => acc + d.cards.length, 0);
-  const totalDue = decks.reduce((acc, d) => acc + d.cards.filter(c => c.nextReview <= Date.now()).length, 0);
+  const currentFolder = safeFolders.find(f => f.id === activeFolderId);
+
+  const totalCards = safeDecks.reduce((acc, d) => acc + (d?.cards?.length || 0), 0);
+  const totalDue = safeDecks.reduce((acc, d) => acc + (d?.cards || []).filter(c => c.nextReview <= Date.now()).length, 0);
 
   const openCustomStudy = (targetId: string = 'all') => {
     setSelectedDeckForCustom(targetId);

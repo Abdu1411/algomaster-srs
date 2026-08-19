@@ -18,16 +18,17 @@ import { useDecks } from '../store';
 
 export function ProgressDashboard() {
   const { decks, stats, resetAllStats } = useDecks();
-  const { activityData, masteryData, weeklyVelocity } = stats;
+  const safeDecks = Array.isArray(decks) ? decks : [];
+  const { activityData = [], masteryData = [], weeklyVelocity = 0 } = stats || {};
 
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
 
-  const totalCards = decks.reduce((acc, d) => acc + d.cards.length, 0);
-  const totalDue = decks.reduce((acc, d) => acc + d.cards.filter(c => c.nextReview <= Date.now()).length, 0);
+  const totalCards = safeDecks.reduce((acc, d) => acc + (d?.cards?.length || 0), 0);
+  const totalDue = safeDecks.reduce((acc, d) => acc + (d?.cards || []).filter(c => c.nextReview <= Date.now()).length, 0);
 
-  const validMasteryDecks = masteryData.filter(m => m.subject !== '---');
+  const validMasteryDecks = (masteryData || []).filter(m => m.subject !== '---');
   const avgMastery = validMasteryDecks.length > 0 
     ? Math.round(validMasteryDecks.reduce((acc, curr) => acc + curr.level, 0) / validMasteryDecks.length)
     : 0;
