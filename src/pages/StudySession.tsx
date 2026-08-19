@@ -288,13 +288,6 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
 
         <div className="flex items-center gap-2 sm:gap-3">
           <button
-            onClick={() => openAskAi(currentCard ? `Can you explain the key concept and Dart patterns behind this card:\n"${currentCard.front}"` : undefined)}
-            className="text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-colors px-2.5 py-1 rounded-lg cursor-pointer shadow-2xs"
-            title="Ask AI about this card or concept"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Ask AI
-          </button>
-          <button
             onClick={() => setIsCustomModalOpen(true)}
             className="text-slate-500 hover:text-blue-600 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-colors px-2.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
           >
