@@ -275,15 +275,6 @@ ${lesson.content}`,
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => openAskAi(`Can you summarize the core principles and Big-O trade-offs of "${lesson.title}"?`)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer group"
-            title="Ask AI about this note"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-purple-600 group-hover:rotate-12 transition-transform" />
-            Ask AI About Note
-          </button>
-
-          <button
             onClick={handleCopyMarkdown}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer"
             title="Copy entire markdown note"
