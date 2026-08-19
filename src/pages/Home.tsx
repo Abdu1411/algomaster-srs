@@ -151,23 +151,39 @@ export function Home() {
 
   // Color options for folder creation
   const colorOptions = [
+    { label: 'Blue', hex: '#2563eb' },
+    { label: 'Indigo', hex: '#4f46e5' },
+    { label: 'Cyan', hex: '#0891b2' },
+    { label: 'Emerald', hex: '#059669' },
     { label: 'Amber', hex: '#d97706' },
     { label: 'Rose', hex: '#e11d48' },
     { label: 'Purple', hex: '#9333ea' },
+    { label: 'Slate', hex: '#475569' }
   ];
 
-  // Filtered decks & folders based on search
+  // Filtered decks, lessons & folders based on search
   const filteredDecks = useMemo(() => {
-    if (!searchQuery.trim()) return decks;
+    if (!searchQuery.trim()) return safeDecks;
     const q = searchQuery.toLowerCase();
-    return decks.filter(d => d.title.toLowerCase().includes(q));
-  }, [decks, searchQuery]);
+    return safeDecks.filter(d => (d?.title || '').toLowerCase().includes(q));
+  }, [safeDecks, searchQuery]);
+
+  const filteredLessons = useMemo(() => {
+    if (!searchQuery.trim()) return safeLessons;
+    const q = searchQuery.toLowerCase();
+    return safeLessons.filter(
+      l =>
+        (l?.title || '').toLowerCase().includes(q) ||
+        (l?.topic || '').toLowerCase().includes(q) ||
+        (l?.content || '').toLowerCase().includes(q)
+    );
+  }, [safeLessons, searchQuery]);
 
   const filteredFolders = useMemo(() => {
-    if (!searchQuery.trim()) return folders;
+    if (!searchQuery.trim()) return safeFolders;
     const q = searchQuery.toLowerCase();
-    return folders.filter(f => f.name.toLowerCase().includes(q));
-  }, [folders, searchQuery]);
+    return safeFolders.filter(f => (f?.name || '').toLowerCase().includes(q));
+  }, [safeFolders, searchQuery]);
 
   // Helper renderer for a single deck card
   const renderDeckCard = (deck: Deck) => {
