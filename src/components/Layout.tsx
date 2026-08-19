@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BrainCircuit, Flame, FolderGit2, Layers, Sparkles, BookOpen } from 'lucide-react';
+import { BrainCircuit, Flame, FolderGit2, Layers, Sparkles, BookOpen, Video } from 'lucide-react';
 import { useDecks } from '../store';
 import { AskAIModal } from './AskAIModal';
 
@@ -9,7 +9,8 @@ export function Header() {
   const location = useLocation();
   const isAllDecksView = location.search.includes('view=all');
   const isLessonsView = location.search.includes('view=lessons');
-  const isFoldersView = !isAllDecksView && !isLessonsView && !location.search.includes('folder=');
+  const isLiveView = location.search.includes('view=live');
+  const isFoldersView = !isAllDecksView && !isLessonsView && !isLiveView && !location.search.includes('folder=');
   const [isAskAiOpen, setIsAskAiOpen] = useState(false);
 
   return (
@@ -67,6 +68,18 @@ export function Header() {
           >
             <BookOpen className="w-3.5 h-3.5" />
             Lessons
+          </Link>
+
+          <Link
+            to="/?view=live"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+              isLiveView
+                ? 'bg-rose-50 text-rose-700 border border-rose-200/80 shadow-2xs'
+                : 'text-slate-600 hover:text-rose-600 hover:bg-slate-100/70 border border-transparent'
+            }`}
+          >
+            <Video className="w-3.5 h-3.5" />
+            Live Lectures
           </Link>
 
           <button

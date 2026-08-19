@@ -47,4 +47,14 @@ export interface Lesson {
   content: string;
   folderId?: string;
   createdAt: number;
+  videoUrl?: string; // YouTube embed URL for live courses
+  multimedia?: MediaItem[]; // Array of attached media items
 }
+
+// New type for multimedia items
+export type MediaItem = {
+  id: string;
+  type: 'image' | 'audio' | 'pdf' | 'video' | 'other';
+  url: string;
+  caption?: string;
+};

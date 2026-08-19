@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -23,26 +23,54 @@ import {
   Info,
   AlertTriangle,
   Lightbulb,
-  CheckCircle2
+  CheckCircle2,
+  FileText,
+  PenTool,
+  ChevronDown,
+  ChevronUp,
+  Timer,
+  Clock,
+  Play,
+  Pause,
+  Scissors,
+  Sliders,
+  RotateCcw
 } from 'lucide-react';
 import { useDecks } from '../store';
 import { MarkdownCodeRenderer } from '../components/CodeBlock';
-import { Deck, Card } from '../types';
+import { YouTubeEmbed, YouTubePlayerHandle } from '../components/YouTubeEmbed';
+import { RichNoteEditor } from '../components/RichNoteEditor';
+import { ManualCardCreator } from '../components/ManualCardCreator';
+import { Deck, Card, Lesson } from '../types';
 import { useActiveView } from '../context/ActiveViewContext';
 
 export function LessonView() {
   const { lessonId } = useParams<{ lessonId: string }>();
   const navigate = useNavigate();
-  const { lessons, folders, deleteLesson, updateLesson, addDeck } = useDecks();
-  const { setActiveResource, openAskAi } = useActiveView();
+  const { lessons, folders, decks, deleteLesson, updateLesson, addLesson, addDeck, updateDeck, addFolder, addCardToDeck } = useDecks();
+  const { setActiveResource } = useActiveView();
 
   const lesson = lessons.find((l) => l.id === lessonId);
   const parentFolder = folders.find((f) => f.id === lesson?.folderId);
 
   const [copied, setCopied] = useState(false);
   const [isSynthesizingCards, setIsSynthesizingCards] = useState(false);
+  const [isScrubbingLesson, setIsScrubbingLesson] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
+  const [isCardCreatorOpen, setIsCardCreatorOpen] = useState(false);
+  const playerRef = useRef<YouTubePlayerHandle>(null);
+
+  // Video time tracking
+  const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
+  const [videoPauseTime, setVideoPauseTime] = useState<number>(0);
+
+  const handleVideoPause = (currentTime: number) => {
+    const rounded = Math.round(currentTime);
+    if (rounded > 0) {
+      setVideoPauseTime(rounded);
+    }
+  };
 
   React.useEffect(() => {
     if (lesson) {
@@ -108,6 +136,43 @@ ${lesson.content}`,
     }
   };
 
+  const handleExportToLesson = async (contentToExport?: string) => {
+    const finalContent = contentToExport || lesson.content;
+    const now = Date.now();
+
+    // Ensure folder exists under the live lecture title
+    let targetFolderId = lesson.folderId;
+    const lessonTitleTrimmed = lesson.title.trim();
+    const existingFolder = folders.find(
+      f => f.name.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase()
+    );
+
+    if (existingFolder) {
+      targetFolderId = existingFolder.id;
+    } else {
+      const createdFolder = await addFolder(lessonTitleTrimmed, '#e11d48');
+      targetFolderId = createdFolder.id;
+    }
+
+    if (!lesson.folderId || lesson.folderId !== targetFolderId) {
+      await updateLesson({ ...lesson, folderId: targetFolderId });
+    }
+
+    const exportedLesson: Lesson = {
+      id: crypto.randomUUID(),
+      title: `${lessonTitleTrimmed} (Lecture Notes)`,
+      topic: lesson.topic || 'Exported Notes',
+      content: finalContent,
+      folderId: targetFolderId,
+      createdAt: now,
+      sources: lesson.sources || (lesson.videoUrl ? [lesson.videoUrl] : undefined),
+      sourceUrl: lesson.videoUrl,
+    };
+
+    await addLesson(exportedLesson);
+    navigate(`/lesson/${exportedLesson.id}`);
+  };
+
   const handleSynthesizeFlashcards = async () => {
     setIsSynthesizingCards(true);
     try {
@@ -115,8 +180,10 @@ ${lesson.content}`,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic: `${lesson.title} - ${lesson.topic}`,
-          url: lesson.sourceUrl
+          topic: lesson.title,
+          url: lesson.sourceUrl || lesson.videoUrl,
+          rawText: lesson.content,
+          count: 8 // High-yield deck covering core CS archetypes with LaTeX math
         })
       });
 
@@ -138,28 +205,132 @@ ${lesson.content}`,
       }
 
       const now = Date.now();
-      const newDeck: Deck = {
+      const newCardsWithIds = generatedCards.map((c: any) => ({
+        ...c,
         id: crypto.randomUUID(),
-        title: `${lesson.title} (SRS Deck)`,
-        folderId: lesson.folderId,
-        createdAt: now,
-        cards: generatedCards.map((c: any) => ({
-          ...c,
-          id: crypto.randomUUID(),
-          nextReview: now,
-          interval: 0,
-          ease: 2.5,
-          reps: 0
-        })) as Card[]
-      };
+        nextReview: now,
+        interval: 0,
+        ease: 2.5,
+        reps: 0
+      })) as Card[];
 
-      await addDeck(newDeck);
-      navigate(`/deck/${newDeck.id}`);
+      // 1. Ensure folder under the same name as the live lesson exists
+      let targetFolderId = lesson.folderId;
+      const lessonTitleTrimmed = lesson.title.trim();
+      const existingFolder = folders.find(
+        f => f.name.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase()
+      );
+
+      if (existingFolder) {
+        targetFolderId = existingFolder.id;
+      } else {
+        const createdFolder = await addFolder(lessonTitleTrimmed, '#e11d48');
+        targetFolderId = createdFolder.id;
+      }
+
+      // Link lesson to folder if not linked yet
+      if (!lesson.folderId || lesson.folderId !== targetFolderId) {
+        await updateLesson({ ...lesson, folderId: targetFolderId });
+      }
+
+      // 2. Keep adding cards to the SAME deck as long as user keeps making them
+      const existingDeck = decks.find(
+        d =>
+          (d.folderId === targetFolderId && (d.title.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase() || d.title.includes(lessonTitleTrimmed))) ||
+          d.title.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase()
+      );
+
+      if (existingDeck) {
+        // Append cards to the existing deck
+        const updatedDeck: Deck = {
+          ...existingDeck,
+          folderId: targetFolderId,
+          cards: [...existingDeck.cards, ...newCardsWithIds]
+        };
+        await updateDeck(updatedDeck);
+        navigate(`/deck/${updatedDeck.id}`);
+      } else {
+        // Create the master deck for this live lesson in its folder
+        const newDeck: Deck = {
+          id: crypto.randomUUID(),
+          title: lessonTitleTrimmed,
+          folderId: targetFolderId,
+          createdAt: now,
+          cards: newCardsWithIds
+        };
+        await addDeck(newDeck);
+        navigate(`/deck/${newDeck.id}`);
+      }
     } catch (err: any) {
       console.error(err);
       alert(`Failed to synthesize deck: ${err.message}`);
     } finally {
       setIsSynthesizingCards(false);
+    }
+  };
+
+  const handleScrubLesson = async () => {
+    setIsScrubbingLesson(true);
+    try {
+      const response = await fetch('/api/scrub-lesson', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: lesson.title,
+          url: lesson.videoUrl || lesson.sourceUrl,
+          rawText: lesson.content
+        })
+      });
+
+      const responseText = await response.text();
+      let data: any = null;
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (err) {
+        throw new Error(`Server returned invalid response: ${responseText.slice(0, 100)}`);
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || `Failed with status ${response.status}`);
+      }
+
+      // Ensure folder under the same name as the live lesson exists
+      let targetFolderId = lesson.folderId;
+      const lessonTitleTrimmed = lesson.title.trim();
+      const existingFolder = folders.find(
+        f => f.name.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase()
+      );
+
+      if (existingFolder) {
+        targetFolderId = existingFolder.id;
+      } else {
+        const createdFolder = await addFolder(lessonTitleTrimmed, '#e11d48');
+        targetFolderId = createdFolder.id;
+      }
+
+      if (!lesson.folderId || lesson.folderId !== targetFolderId) {
+        await updateLesson({ ...lesson, folderId: targetFolderId });
+      }
+
+      const now = Date.now();
+      const createdLesson: Lesson = {
+        id: crypto.randomUUID(),
+        title: data.title || `${lessonTitleTrimmed} (Lecture Notes)`,
+        topic: data.topic || lesson.topic || 'CS Lecture Notes',
+        content: data.content || lesson.content,
+        folderId: targetFolderId,
+        createdAt: now,
+        sources: lesson.videoUrl ? [lesson.videoUrl] : undefined,
+        sourceUrl: lesson.videoUrl,
+      };
+
+      await addLesson(createdLesson);
+      navigate(`/lesson/${createdLesson.id}`);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to scrub lecture: ${err.message}`);
+    } finally {
+      setIsScrubbingLesson(false);
     }
   };
 
@@ -266,14 +437,25 @@ ${lesson.content}`,
       {/* Breadcrumb & Navigation */}
       <div className="flex items-center justify-between gap-4 mb-6">
         <Link
-          to={lesson.folderId ? `/?folder=${lesson.folderId}` : '/?view=lessons'}
+          to={lesson.folderId ? `/?folder=${lesson.folderId}` : (lesson.videoUrl ? '/?view=live' : '/?view=lessons')}
           className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors group"
         >
           <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-          {parentFolder ? `Back to 📁 ${parentFolder.name}` : 'Back to Lessons'}
+          {parentFolder ? `Back to 📁 ${parentFolder.name}` : (lesson.videoUrl ? 'Back to Live Lectures' : 'Back to Lessons')}
         </Link>
 
         <div className="flex items-center gap-2">
+          {lesson.videoUrl && (
+            <button
+              onClick={() => handleExportToLesson()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer"
+              title="Export as a standalone CS Lecture Note in the Lessons tab"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              Export to Lesson
+            </button>
+          )}
+
           <button
             onClick={handleCopyMarkdown}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer"
@@ -417,43 +599,134 @@ ${lesson.content}`,
             );
           })()}
 
-          {/* Quick Action: Convert to Flashcards */}
-          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <p className="text-xs text-slate-500">
-              Turn these lecture notes into active recall flashcards to memorize with spaced repetition.
-            </p>
+          {/* Quick Action: Convert to Flashcards (Only shown for standard CS notes, live lectures use timestamp synthesizer) */}
+          {!lesson.videoUrl && (
+            <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <p className="text-xs text-slate-500">
+                Turn these lecture notes into active recall flashcards to memorize with spaced repetition.
+              </p>
+
+              <button
+                onClick={() => handleSynthesizeFlashcards()}
+                disabled={isSynthesizingCards}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-md transition-all disabled:opacity-50 cursor-pointer whitespace-nowrap"
+              >
+                {isSynthesizingCards ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating 25 Flashcards...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    Synthesize SRS Flashcards
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+        {/* Video Embed & Live Lecture AI Suite */}
+        {lesson.videoUrl && (
+          <div className="space-y-6 mb-8">
+            <YouTubeEmbed
+              ref={playerRef}
+              videoUrl={lesson.videoUrl}
+              onPause={handleVideoPause}
+              onTimeUpdate={(t) => setVideoCurrentTime(t)}
+            />
+
+            {/* Make Flashcards Action Button */}
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={handleSynthesizeFlashcards}
+                disabled={isSynthesizingCards}
+                className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold rounded-2xl text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer active:scale-95 whitespace-nowrap"
+              >
+                {isSynthesizingCards ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Making Flashcards...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    Make Flashcards
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Rich Note Editor */}
+        <RichNoteEditor
+          content={lesson.content}
+          onStartTyping={() => {
+            playerRef.current?.pause();
+            const t = playerRef.current?.getCurrentTime() || 0;
+            if (t > 0) {
+              setVideoPauseTime(Math.round(t));
+            }
+          }}
+          onExportToLesson={lesson.videoUrl ? handleExportToLesson : undefined}
+          onChange={async (newContent) => {
+            await updateLesson({ ...lesson, content: newContent });
+            setActiveResource({
+              title: lesson.title,
+              type: 'lesson',
+              contextText: newContent,
+            });
+          }}
+        />
+
+        {/* In-Lesson Flashcard Forge */}
+        <div className="mt-8 bg-white/95 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-200/90 p-6 backdrop-blur-md">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200/80 shadow-2xs">
+                <PenTool className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm text-slate-900 uppercase tracking-wider font-extrabold flex items-center gap-2">
+                  Create Flashcards from this Lecture
+                </h2>
+                <p className="text-xs text-slate-500 font-sans">
+                  Craft Concept, Complexity, Cloze, Pattern, or Code implementation cards while studying
+                </p>
+              </div>
+            </div>
 
             <button
-              onClick={handleSynthesizeFlashcards}
-              disabled={isSynthesizingCards}
-              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-md transition-all disabled:opacity-50 cursor-pointer whitespace-nowrap"
+              type="button"
+              onClick={() => setIsCardCreatorOpen(!isCardCreatorOpen)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
             >
-              {isSynthesizingCards ? (
+              {isCardCreatorOpen ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Generating 25 Flashcards...
+                  <ChevronUp className="w-3.5 h-3.5" /> Collapse Forge
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  Synthesize SRS Flashcards
+                  <PenTool className="w-3.5 h-3.5" /> Open Flashcard Forge
                 </>
               )}
             </button>
           </div>
+
+          {isCardCreatorOpen && (
+            <div className="mt-6 pt-6 border-t border-slate-100 animate-fadeIn">
+              <ManualCardCreator
+                decks={decks}
+                onAddDeck={addDeck}
+                onAddCard={addCardToDeck}
+              />
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Note Content Section */}
-      <article className="bg-white/95 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-200/90 p-6 sm:p-10 backdrop-blur-md">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
-          components={markdownComponents}
-        >
-          {lesson.content}
-        </ReactMarkdown>
-      </article>
-    </div>
   );
 }

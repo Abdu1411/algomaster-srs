@@ -1,10 +1,11 @@
 import express from 'express';
-import { GoogleGenAI, Type } from '@google/genai';
+import OpenAI from 'openai';
 import * as cheerio from 'cheerio';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
+import multer from 'multer';
 
 dotenv.config();
 
@@ -15,12 +16,46 @@ const port = process.env.PORT || 3000;
 const app = express();
 app.use(express.json());
 
-// Health check endpoint for cloud load balancers and deployment verification
+// Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Serve uploaded media files
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+
+// Media upload endpoint
+const upload = multer({ dest: path.join(__dirname, 'public', 'uploads') });
+
+app.post('/api/media/upload', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  const file = req.file;
+  const publicUrl = `/uploads/${file.filename}`;
+  res.json({ url: publicUrl, filename: file.originalname });
+});
+
+
+// ------------------- DeepSeek Client Setup -------------------
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+if (!DEEPSEEK_API_KEY) {
+  console.warn('⚠️  DEEPSEEK_API_KEY is not set. AI features will fail.');
+}
+
+// ✅ CORRECT base URL (always /v1)
+const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
+
+const deepseek = new OpenAI({
+  apiKey: DEEPSEEK_API_KEY,
+  baseURL: DEEPSEEK_BASE_URL,
+});
+
+// ✅ Use deepseek-chat (DeepSeek V3) by default (can be overridden with DEEPSEEK_MODEL env var)
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+
+console.log(`🔧 DeepSeek configured: baseURL=${DEEPSEEK_BASE_URL}, model=${DEEPSEEK_MODEL}`);
+// -------------------------------------------------------------
 
 async function extractTextFromUrl(url: string) {
   try {
@@ -33,11 +68,11 @@ async function extractTextFromUrl(url: string) {
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const html = await response.text();
     const $ = cheerio.load(html);
-    
+
     // Remove non-content elements
     $('script, style, nav, footer, iframe, img, svg, noscript, header').remove();
-    
-    // Extract main text or body
+
+    // Extract main text
     const bodyText = $('article, main, .content, #content, body').text();
     return bodyText.replace(/\s+/g, ' ').trim().slice(0, 40000);
   } catch (error) {
@@ -51,16 +86,23 @@ function safeParseJSONArray(rawText: string) {
   if (text.startsWith('```')) {
     text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
   }
-  
+
   if (!text) {
-    throw new Error('Gemini AI returned an empty response. Please try submitting your topic again.');
+    throw new Error('DeepSeek AI returned an empty response. Please try submitting your topic again.');
   }
 
   try {
     const res = JSON.parse(text);
     if (Array.isArray(res) && res.length > 0) return res;
+    if (res && typeof res === 'object') {
+      if (Array.isArray(res.cards) && res.cards.length > 0) return res.cards;
+      if (Array.isArray(res.data) && res.data.length > 0) return res.data;
+      const values = Object.values(res);
+      const foundArray = values.find(v => Array.isArray(v) && v.length > 0);
+      if (foundArray) return foundArray;
+    }
   } catch (e) {
-    // If output was truncated at token limit, recover all complete card objects
+    // Attempt to recover truncated JSON
     const firstBracket = text.indexOf('[');
     const lastObjectEnd = text.lastIndexOf('}');
     if (firstBracket !== -1 && lastObjectEnd !== -1 && lastObjectEnd > firstBracket) {
@@ -74,103 +116,227 @@ function safeParseJSONArray(rawText: string) {
     }
     throw new Error(`Failed to parse AI flashcards: ${e instanceof Error ? e.message : String(e)}`);
   }
-  
+
   throw new Error('AI returned 0 flashcards. Please try a more specific topic.');
 }
 
+// ==================== ENDPOINTS ====================
+
 app.post('/api/generate-deck', async (req, res) => {
   try {
-    const { url, topic } = req.body;
+    const { url, topic, rawText, startTime, endTime, count } = req.body;
     let contextText = '';
-    
+
     if (url) {
       contextText = await extractTextFromUrl(url);
     }
 
-    const effectiveTopic = (topic && topic.trim()) 
-      ? topic.trim() 
-      : (url ? 'Algorithms & Data Structures from provided URL' : 'Dart Data Structures and Algorithms Mastery');
-
-    const prompt = `
-    You are an expert algorithm and data structures instructor specializing in the Dart programming language (Dart 3.x).
-    Your mission is to read and analyze the provided topic and/or content from a web document / article URL and convert it into a comprehensive deck of Anki-style spaced repetition flashcards.
-    
-    CRITICAL UNIVERSAL CONVERSION RULE - 100% DART CODE:
-    - Regardless of what programming language or format the original article or link is written in (whether Python, C++, Java, JavaScript, Go, Rust, pseudocode, or plain English):
-      YOU MUST CONVERT AND TRANSLATE ALL CODE, IMPLEMENTATIONS, EXAMPLES, DATA STRUCTURES, AND SNIPPETS 100% INTO CLEAN, IDIOMATIC, MODERN DART 3.x (with sound null safety, strong typing like List<T>, Map<K,V>, Set<E>, Queue<T>, classes, extension methods, and Dart collection literals).
-    - NEVER produce Python, JavaScript, Java, C++, or any language other than Dart.
-    
-    Topic: ${effectiveTopic}
-    Extracted Web / Article Content:
-    ${contextText ? contextText.slice(0, 25000) : 'No external URL provided. Generate cards based on topic name.'}
-    
-    TASK:
-    Analyze all the algorithms, patterns, complexities, logic, and techniques in this content, and synthesize a rich deck of 15 to 25 high-yield flashcards covering:
-    1. Concept / "Why" (Understand the core idea in Dart context)
-    2. Complexity (Time/space Big-O analysis)
-    3. Pattern trigger (Recognize when to apply this in Dart / Flutter applications)
-    4. Cloze deletion (Remember key steps using Anki {{c1::...}} syntax)
-    5. Comparison (Distinguish similar data structures/algorithms in Dart)
-    6. Trace / visual (Simulate step-by-step on small Dart data input)
-    7. Invariant / proof (Why the algorithm maintains correctness)
-    8. Debugging (Common Dart implementation pitfalls and edge cases)
-    9. Implementation prompt (Dart coding prompts - e.g. "Implement function \`int binarySearch(List<int> list, int target)\` in Dart")
-    
-    Format requirements:
-    Return a JSON array of objects.
-    Each object must have:
-    - id: a unique string (e.g. "dart-1", "dart-2")
-    - type: one of ["Concept", "Complexity", "Pattern", "Cloze", "Comparison", "Trace", "Invariant", "Debugging", "Implementation"]
-    - front: front of card in Markdown with Dart code blocks (\`\`\`dart ... \`\`\`)
-    - back: back of card with thorough answer in Markdown with Dart code blocks (\`\`\`dart ... \`\`\`)
-    - codeSnippet: (optional) Dart code snippet for Debugging or Trace cards
-    
-    Ensure the output is ONLY valid JSON.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: prompt,
-      config: {
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              type: { 
-                type: Type.STRING, 
-                enum: ["Concept", "Complexity", "Pattern", "Cloze", "Comparison", "Trace", "Invariant", "Debugging", "Implementation"] 
-              },
-              front: { type: Type.STRING },
-              back: { type: Type.STRING },
-              codeSnippet: { type: Type.STRING, nullable: true }
-            },
-            required: ["id", "type", "front", "back"]
-          }
-        }
-      }
-    });
-
-    let text = response.text || '';
-    if (!text && response.candidates && response.candidates[0]?.content?.parts) {
-      text = response.candidates[0].content.parts.map((p: any) => p.text || '').join('');
+    if (rawText && typeof rawText === 'string' && rawText.trim()) {
+      contextText += `\n\n=== USER NOTES & LECTURE TRANSCRIPT ===\n${rawText.trim().slice(0, 20000)}\n`;
     }
 
+    const isClippedVideo = (startTime !== undefined && endTime !== undefined);
+    // For a 1-minute video clip, strict max is 3 cards
+    const targetCardCount = count ? Number(count) : (isClippedVideo ? 3 : 20);
+
+    const effectiveTopic = (topic && topic.trim())
+      ? topic.trim()
+      : (url ? 'Algorithms & Data Structures from provided URL' : 'Dart Data Structures and Algorithms Mastery');
+
+    let systemPrompt = '';
+    let userPrompt = '';
+
+    if (isClippedVideo) {
+      // Specialized LLM prompt for live lecture timestamp clipping with LaTeX math & Markdown
+      systemPrompt = 'You are an elite Computer Science Professor specializing in algorithms, data structures, and Dart 3.x. You synthesize precise, high-yield spaced repetition flashcards from specific video lecture segments with full Markdown and LaTeX math support.';
+
+      userPrompt = `
+      You are analyzing a targeted segment of a live computer science lecture video:
+      - Video Interval: ${startTime} to ${endTime}
+      - Topic: ${effectiveTopic}
+      
+      TASK:
+      Synthesize EXACTLY ${targetCardCount} high-yield, conceptual flashcards covering the EXACT concepts, invariants, and Dart 3.x implementations taught in this specific ${startTime} - ${endTime} segment. (For a 1-minute clip, you must not exceed 3 cards).
+      
+      MANDATORY FORMATTING & NOTATION REQUIREMENTS:
+      1. MATH NOTATION (LaTeX):
+         - Use standard LaTeX math notation for all time/space complexity, variables, and math formulas.
+         - Inline math: use single dollar signs, e.g. $O(N \\log N)$, $\\mathcal{O}(1)$, $T(n) = 2T(n/2) + O(n)$, $\\lfloor \\frac{n}{2} \\rfloor$.
+         - Block math: use double dollar signs, e.g. $$ \\sum_{i=1}^n i = \\frac{n(n+1)}{2} $$.
+      
+      2. RICH MARKDOWN & DART CODE:
+         - Use clean Markdown styling with bolding, lists, headers, and inline code (\`...\`).
+         - All code MUST be 100% valid, idiomatic Dart 3.x inside \`\`\`dart ... \`\`\` blocks with sound null safety.
+      
+      3. APPROPRIATE CARD TYPES (Choose the best ${targetCardCount} archetypes for this segment):
+         - 'Concept': Deep conceptual intuition and "Why".
+         - 'Complexity': Precise Time & Space complexity using LaTeX math ($O(...)$).
+         - 'Pattern': Problem recognition and when to apply this technique in Dart.
+         - 'Cloze': Anki cloze deletion with math/code syntax: {{c1::$O(\\log N)$}} or {{c1::list.sublist(mid)}}.
+         - 'Implementation': Focused Dart coding challenge testing the core logic from this segment.
+         - 'Invariant': Loop invariant, correctness proof, or boundary condition.
+      
+      OUTPUT FORMAT:
+      Respond ONLY with a valid JSON object:
+      {
+        "cards": [
+          {
+            "type": "Concept" | "Complexity" | "Pattern" | "Cloze" | "Comparison" | "Trace" | "Invariant" | "Debugging" | "Implementation",
+            "front": "Markdown and LaTeX question",
+            "back": "Detailed Markdown and LaTeX answer",
+            "codeSnippet": "Optional Dart code snippet"
+          }
+        ]
+      }
+      
+      CONTEXT & NOTES:
+      ${contextText ? contextText.slice(0, 30000) : 'Synthesize targeted cards for this lecture clip.'}
+      `;
+    } else {
+      // Standard comprehensive deck generation prompt
+      systemPrompt = 'You are an expert algorithm and data structures instructor specializing in Dart 3.x. Respond ONLY with a valid JSON object containing a "cards" array.';
+
+      userPrompt = `
+      You are an expert algorithm and data structures instructor specializing in the Dart programming language (Dart 3.x).
+      Your mission is to read and analyze the provided topic and/or content from a web document / article URL and convert it into a comprehensive deck of ${targetCardCount} Anki-style spaced repetition flashcards.
+      
+      CRITICAL UNIVERSAL CONVERSION RULE - 100% DART CODE:
+      - Translate all code 100% into clean, idiomatic, modern Dart 3.x (with sound null safety, strong typing).
+      - Use LaTeX math notation ($O(N \\log N)$, etc.) for all complexity bounds.
+      
+      CRITICAL DECK ARCHITECTURE - HIGH-YIELD CARDS:
+      Produce exactly ${targetCardCount} flashcards covering relevant archetypes:
+      1. Conceptual foundation ("Why" and core intuition)
+      2. Complexity analysis with LaTeX ($O(N)$, etc.)
+      3. Pattern recognition
+      4. Cloze deletions ({{c1::...}})
+      5. Comparison
+      6. Invariant / proof
+      7. Debugging & Implementation prompts
+      
+      Format requirements:
+      Return a JSON object with a "cards" array containing ${targetCardCount} cards.
+      
+      TOPIC / CONTENT:
+      Topic: ${effectiveTopic}
+      
+      Web Content / Context:
+      ${contextText ? contextText.slice(0, 30000) : 'Generate comprehensive deck on topic.'}
+      `;
+    }
+
+    const completion = await deepseek.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt
+        },
+        {
+          role: 'user',
+          content: userPrompt
+        }
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: 4096,
+    });
+
+    const text = completion.choices[0]?.message?.content || '{}';
     const parsedCards = safeParseJSONArray(text);
     res.json(parsedCards);
   } catch (error: any) {
     console.error('Generate Deck Error:', error);
-    res.status(500).json({ error: error.message || 'Failed to generate content' });
+    res.status(500).json({ error: error.message || 'Failed to generate content with DeepSeek' });
+  }
+});
+
+app.post('/api/scrub-lesson', async (req, res) => {
+  try {
+    const { url, topic, rawText } = req.body;
+    let contextText = '';
+
+    if (url) {
+      contextText = await extractTextFromUrl(url);
+    }
+
+    if (rawText && typeof rawText === 'string' && rawText.trim()) {
+      contextText += `\n\n=== USER NOTES & LECTURE TRANSCRIPT ===\n${rawText.trim().slice(0, 25000)}\n`;
+    }
+
+    const effectiveTopic = (topic && topic.trim())
+      ? topic.trim()
+      : (url ? 'Algorithms & Data Structures Lecture' : 'Dart Data Structures and Algorithms Mastery');
+
+    const systemPrompt = 'You are an elite Computer Science Professor and Principal Software Engineer. You write world-class, exhaustive, pedagogical CS lecture notes with rigorous mathematical proofs (LaTeX), ASCII visual traces, and production Dart 3.x implementations.';
+
+    const userPrompt = `
+    Analyze the following lecture topic, video context, or notes, and scrub/transform it into comprehensive, structured Computer Science Lecture Notes.
+    
+    Topic: ${effectiveTopic}
+    Video/Article URL: ${url || 'N/A'}
+    
+    Context & Materials:
+    ${contextText ? contextText.slice(0, 30000) : 'Generate comprehensive lecture notes on this computer science topic.'}
+    
+    CRITICAL REQUIREMENTS:
+    1. STRUCTURE & SECTIONS:
+       - # [Engaging Academic Title]
+       - ## Executive Summary & Core Intuition (The "Why" and real-world analogy)
+       - ## Mathematical Foundations & Invariants (Formal definitions using LaTeX math: $O(...)$, $\\mathcal{O}(...)$, sums, recurrence relations)
+       - ## Step-by-Step Algorithmic Mechanics (Step walkthrough with ASCII diagram or visual flow)
+       - ## Canonical Dart 3.x Implementation (100% sound null safety, strong typing, clean documentation comments)
+       - ## Rigorous Complexity Analysis (Formal Time and Space Big-O analysis with proofs)
+       - ## Edge Cases, Pitfalls & Invariants (Common failure modes, boundary conditions, zero/null/overflow handling)
+       - ## Key Takeaways & Flashcard Study Summary
+    
+    2. CODE & SYNTAX:
+       - ALL code snippets must be 100% idiomatic, modern Dart 3.x inside \`\`\`dart ... \`\`\` codeblocks.
+       - Use proper Dart collection types, generics, and null safety.
+    
+    3. MATH & NOTATION:
+       - Use LaTeX syntax for math: single dollar signs \`$O(N \\log N)$\` for inline, double dollar signs \`$$...$$\` for block equations.
+    
+    Return a JSON object with:
+    {
+      "title": "Comprehensive Lecture Note Title",
+      "topic": "${effectiveTopic}",
+      "content": "The complete markdown lecture notes content"
+    }
+    `;
+
+    const completion = await deepseek.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: 4096,
+    });
+
+    const text = completion.choices[0]?.message?.content || '{}';
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = {
+        title: `${effectiveTopic} - Lecture Notes`,
+        topic: effectiveTopic,
+        content: text
+      };
+    }
+
+    res.json(parsed);
+  } catch (error: any) {
+    console.error('Scrub Lesson Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to scrub and generate lecture notes' });
   }
 });
 
 app.post('/api/evaluate-code', async (req, res) => {
   try {
     const { prompt, code, language = 'dart' } = req.body;
-    
+
     const evaluationPrompt = `
     You are an expert technical interviewer and computer science professor specializing in Dart algorithms.
     A student has submitted a Dart implementation for the following prompt:
@@ -189,33 +355,32 @@ app.post('/api/evaluate-code', async (req, res) => {
     - "Easy" - Wrote it flawlessly, optimally, and idiomatically in Dart.
     
     Return a JSON object with:
-    - grade: "Again", "Good", or "Easy"
-    - feedback: A short paragraph of constructive feedback in markdown format.
-    
-    Ensure the output is ONLY valid JSON.
+    {
+      "grade": "Again" | "Good" | "Easy",
+      "feedback": "A short paragraph of constructive feedback in markdown format."
+    }
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: evaluationPrompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            grade: { type: Type.STRING, enum: ["Again", "Good", "Easy"] },
-            feedback: { type: Type.STRING }
-          },
-          required: ["grade", "feedback"]
+    const completion = await deepseek.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert technical interviewer specializing in Dart. Respond ONLY with a valid JSON object containing "grade" and "feedback".'
+        },
+        {
+          role: 'user',
+          content: evaluationPrompt
         }
-      }
+      ],
+      response_format: { type: 'json_object' }
     });
 
-    const text = response.text || '{}';
+    const text = completion.choices[0]?.message?.content || '{}';
     res.json(JSON.parse(text));
   } catch (error: any) {
     console.error('Evaluate Code Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message || 'Failed to evaluate code with DeepSeek' });
   }
 });
 
@@ -227,7 +392,7 @@ app.post('/api/ask-ai', async (req, res) => {
     }
 
     const prompt = `
-    You are AlgoMaster AI, an elite computer science professor, principal engineer, and master tutor in algorithms, data structures, and the Dart language.
+    You are AlgoMaster AI powered by DeepSeek, an elite computer science professor, principal engineer, and master tutor in algorithms, data structures, and the Dart language.
     
     USER'S INQUIRY:
     "${inquiry}"
@@ -239,7 +404,7 @@ app.post('/api/ask-ai', async (req, res) => {
     ${context}
     =======================================================
     IMPORTANT CONTEXT INSTRUCTION:
-    The user is currently viewing the resource detailed above (e.g. a specific SRS flashcard question, lecture notes, code editor workspace, or study session).
+    The user is currently viewing the resource detailed above.
     If the user's question is asking to explain, simplify, optimize, quiz, debug, compare, or elaborate on what they are currently viewing, directly reference and deeply analyze this active context.
     ` : ''}
     
@@ -251,16 +416,26 @@ app.post('/api/ask-ai', async (req, res) => {
     5. If the user asks for a quiz or code challenge on their currently viewed material, generate an active recall question with hidden or progressive hints.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: prompt,
+    const completion = await deepseek.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are AlgoMaster AI powered by DeepSeek, an elite computer science professor and Dart algorithm expert.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      max_tokens: 4096,
     });
 
-    const answer = response.text || 'No response generated.';
+    const answer = completion.choices[0]?.message?.content || 'No response generated.';
     res.json({ answer });
   } catch (error: any) {
     console.error('Ask AI Error:', error);
-    res.status(500).json({ error: error.message || 'Failed to process inquiry with AI' });
+    res.status(500).json({ error: error.message || 'Failed to process inquiry with DeepSeek AI' });
   }
 });
 
@@ -300,36 +475,37 @@ app.post('/api/format-card-archetype', async (req, res) => {
     
     OUTPUT SCHEMA:
     Return a JSON object with:
-    - type: "${archetype}"
-    - front: Refined front prompt for active recall (Markdown).
-    - back: Refined back explanation for active recall (Markdown).
-    - codeSnippet: (Optional) Dart code snippet if applicable.
+    {
+      "type": "${archetype}",
+      "front": "Refined front prompt for active recall (Markdown)",
+      "back": "Refined back explanation for active recall (Markdown)",
+      "codeSnippet": "Optional Dart code snippet if applicable"
+    }
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            type: { type: Type.STRING },
-            front: { type: Type.STRING },
-            back: { type: Type.STRING },
-            codeSnippet: { type: Type.STRING }
-          },
-          required: ["type", "front", "back"]
+    const completion = await deepseek.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert SRS flashcard designer. Respond ONLY with a valid JSON object matching the requested schema.'
+        },
+        {
+          role: 'user',
+          content: prompt
         }
-      }
+      ],
+      response_format: { type: 'json_object' }
     });
 
-    let text = response.text || '{}';
-    if (text.trim().startsWith('```')) {
-      text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const text = completion.choices[0]?.message?.content || '{}';
+    let cardData: any = {};
+    try {
+      cardData = JSON.parse(text);
+    } catch {
+      cardData = {};
     }
 
-    const cardData = JSON.parse(text);
     res.json({
       type: archetype,
       front: cardData.front || question,
@@ -345,7 +521,7 @@ app.post('/api/format-card-archetype', async (req, res) => {
 app.post('/api/generate-lesson', async (req, res) => {
   try {
     const { url, urls, rawText, topic } = req.body;
-    
+
     // Normalize source list
     const sourceList: string[] = [];
     if (Array.isArray(urls)) {
@@ -390,8 +566,8 @@ app.post('/api/generate-lesson', async (req, res) => {
       validSourcesUsed.push('Pasted Text / Lecture Notes');
     }
 
-    const effectiveTopic = (topic && topic.trim()) 
-      ? topic.trim() 
+    const effectiveTopic = (topic && topic.trim())
+      ? topic.trim()
       : (sourceList.length > 0 ? 'Computer Science Multi-Source Lecture Note' : 'Advanced Data Structures & Algorithms');
 
     const prompt = `
@@ -406,21 +582,14 @@ app.post('/api/generate-lesson', async (req, res) => {
     1. Core Concepts & Architecture: Extract and thoroughly explain all key computer science concepts, data structures, algorithms, design patterns, and architectural principles across the provided sources.
     2. Code & Implementation: Provide clean, well-commented, and idiomatic Dart (and polyglot where helpful) code snippets to demonstrate how concepts work in practice.
     3. Efficiency Analysis: Always analyze the time and space complexity of algorithms and data structures using Big-O notation ($O(N)$, $O(\\log N)$, $O(1)$, etc.).
-    4. Terminology: Define all specialized jargon (e.g., idempotency, concurrency, cache invalidation, cache line locality, branch prediction) clearly.
-    5. Systems & Trade-offs: Connect software choices to foundational hardware principles (memory hierarchy, CPU cache, heap vs stack allocation) and discuss engineering trade-offs (e.g., time vs. space, consistency vs. availability).
+    4. Terminology: Define all specialized jargon clearly.
+    5. Systems & Trade-offs: Connect software choices to foundational hardware principles (memory hierarchy, CPU cache, heap vs stack allocation) and discuss engineering trade-offs.
     
     FORMATTING GUIDELINES:
     - Use appropriate markdown headings (# Title, ## Section, ### Subsections) to create a logical hierarchical structure.
-    - Format all mathematical expressions, complexity bounds, and boolean logic using LaTeX (enclosed in $ or $$ delimiters, e.g. $O(N \\log N)$).
-    - Present important theoretical points as concise, complete sentences rather than endless shallow bullet points.
+    - Format all mathematical expressions, complexity bounds, and boolean logic using LaTeX (enclosed in $ or $$ delimiters).
     - Use explicit markdown code blocks with language identifiers (e.g. \`\`\`dart) for all code snippets.
-    - Bold or italicize key technical terms when first introduced.
-    - Include text-based Mermaid.js diagrams (\`\`\`mermaid ... \`\`\`) whenever a concept benefits from visual representation (flowcharts, pointer layouts, tree structures, state transitions).
-    
-    EDUCATIONAL APPROACH:
-    - Deconstruction: Break complex systems or algorithms into digestible components (e.g., explain the base case and recurrence relation before showing the complete solution).
-    - Practical Application: Provide illuminating, real-world engineering examples (e.g. database indexing, network routing, garbage collection).
-    - Insight Boxes: Include "Deep Dive" and "Common Pitfall" callout blocks (e.g. \`> **Deep Dive:** ...\` or \`> **⚠️ Common Pitfall:** ...\`) highlighting edge cases and bug traps.
+    - Include text-based Mermaid.js diagrams (\`\`\`mermaid ... \`\`\`) whenever a concept benefits from visual representation.
     
     TOPIC:
     ${effectiveTopic}
@@ -430,30 +599,30 @@ app.post('/api/generate-lesson', async (req, res) => {
     
     OUTPUT:
     Return a JSON object with:
-    - title: A concise, authoritative title for the lecture note (e.g. "Lecture 04: Self-Balancing Red-Black Trees & Cache Locality")
-    - topic: The primary subject category
-    - content: The complete, exhaustive lecture notes in rich Markdown.
+    {
+      "title": "A concise, authoritative title for the lecture note (e.g. Lecture 04: Self-Balancing Red-Black Trees & Cache Locality)",
+      "topic": "The primary subject category",
+      "content": "The complete, exhaustive lecture notes in rich Markdown."
+    }
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: prompt,
-      config: {
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            topic: { type: Type.STRING },
-            content: { type: Type.STRING }
-          },
-          required: ["title", "topic", "content"]
+    const completion = await deepseek.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an elite computer science professor and senior software engineer. Respond ONLY with a valid JSON object matching the requested schema.'
+        },
+        {
+          role: 'user',
+          content: prompt
         }
-      }
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: 8192,
     });
 
-    let text = response.text || '{}';
+    let text = completion.choices[0]?.message?.content || '{}';
     if (text.trim().startsWith('```')) {
       text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     }
@@ -466,9 +635,11 @@ app.post('/api/generate-lesson', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Generate Lesson Error:', error);
-    res.status(500).json({ error: error.message || 'Failed to generate CS lecture notes' });
+    res.status(500).json({ error: error.message || 'Failed to generate CS lecture notes with DeepSeek' });
   }
 });
+
+// ==================== SERVER START ====================
 
 async function startServer() {
   if (isProd) {

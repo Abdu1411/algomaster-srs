@@ -25,7 +25,8 @@ import {
   Bot,
   ExternalLink,
   FileText,
-  Clock
+  Clock,
+  Video
 } from 'lucide-react';
 import { AICardGenerator } from '../components/AICardGenerator';
 import { ProgressDashboard } from '../components/ProgressDashboard';
@@ -84,6 +85,7 @@ ${lessons.map(l => `- "${l.title}" [Topic: ${l.topic}]`).join('\n') || 'No lectu
   const currentViewParam = searchParams.get('view');
   const isAllView = currentViewParam === 'all';
   const isLessonsOnlyView = currentViewParam === 'lessons';
+  const isLiveView = currentViewParam === 'live';
   const activeFolderId = searchParams.get('folder');
 
   // Search & Filter State
@@ -110,6 +112,11 @@ ${lessons.map(l => `- "${l.title}" [Topic: ${l.topic}]`).join('\n') || 'No lectu
 
   const [lessonToMove, setLessonToMove] = useState<Lesson | null>(null);
   const [targetMoveLessonFolderId, setTargetMoveLessonFolderId] = useState<string>('');
+
+  // Live Lecture creation state
+  const [liveLectureTitle, setLiveLectureTitle] = useState('');
+  const [liveLectureTopic, setLiveLectureTopic] = useState('');
+  const [liveLectureUrl, setLiveLectureUrl] = useState('');
 
   // Deck Renaming State
   const [deckToRename, setDeckToRename] = useState<Deck | null>(null);
@@ -209,6 +216,18 @@ ${lessons.map(l => `- "${l.title}" [Topic: ${l.topic}]`).join('\n') || 'No lectu
     const q = searchQuery.toLowerCase();
     return safeFolders.filter(f => (f?.name || '').toLowerCase().includes(q));
   }, [safeFolders, searchQuery]);
+
+  // Live lectures = lessons that have a videoUrl
+  const filteredLiveLessons = useMemo(() => {
+    const live = safeLessons.filter(l => !!l.videoUrl);
+    if (!searchQuery.trim()) return live;
+    const q = searchQuery.toLowerCase();
+    return live.filter(
+      l =>
+        (l?.title || '').toLowerCase().includes(q) ||
+        (l?.topic || '').toLowerCase().includes(q)
+    );
+  }, [safeLessons, searchQuery]);
 
   // Helper renderer for a single deck card
   const renderDeckCard = (deck: Deck) => {
@@ -399,6 +418,85 @@ ${lessons.map(l => `- "${l.title}" [Topic: ${l.topic}]`).join('\n') || 'No lectu
     );
   };
 
+  // Helper renderer for a single live lecture card
+  const renderLiveLectureCard = (lesson: Lesson) => {
+    // Extract YouTube thumbnail
+    const extractYtId = (url: string) => {
+      const match = url.match(/[?&]v=([^&#]*)/) || url.match(/youtu\.be\/([^?&#]+)/);
+      return match ? match[1] : null;
+    };
+    const ytId = lesson.videoUrl ? extractYtId(lesson.videoUrl) : null;
+    const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
+
+    return (
+      <div
+        key={lesson.id}
+        className="group relative bg-white/95 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-200/90 overflow-hidden flex flex-col transition-all duration-300 hover:border-rose-300 hover:shadow-[0_16px_40px_rgba(225,29,72,0.08)] hover:-translate-y-1"
+      >
+        {/* YouTube Thumbnail */}
+        {thumbUrl ? (
+          <Link to={`/lesson/${lesson.id}`} className="relative block aspect-video bg-slate-900 overflow-hidden">
+            <img
+              src={thumbUrl}
+              alt={lesson.title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+            <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-600/90 text-white text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm">
+                <Video className="w-3 h-3" /> Live
+              </span>
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-xl">
+                <Play className="w-7 h-7 text-rose-600 ml-1" />
+              </div>
+            </div>
+          </Link>
+        ) : (
+          <Link to={`/lesson/${lesson.id}`} className="relative block h-32 bg-gradient-to-br from-rose-100 to-pink-50 flex items-center justify-center">
+            <Video className="w-10 h-10 text-rose-300" />
+          </Link>
+        )}
+
+        {/* Card Body */}
+        <div className="p-5 flex flex-col flex-1">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200 self-start mb-2">
+            {lesson.topic}
+          </span>
+
+          <Link to={`/lesson/${lesson.id}`} className="block group-hover:text-rose-600 transition-colors">
+            <h3 className="font-bold text-sm text-slate-900 line-clamp-2 tracking-tight mb-2 group-hover:text-rose-600">
+              {lesson.title}
+            </h3>
+          </Link>
+
+          <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {new Date(lesson.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </span>
+            <div className="flex items-center gap-1">
+              <Link
+                to={`/lesson/${lesson.id}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all shadow-2xs"
+              >
+                Watch & Study <MoveRight className="w-3.5 h-3.5" />
+              </Link>
+              <button
+                onClick={() => deleteLesson(lesson.id)}
+                className="text-slate-400 hover:text-rose-500 transition-colors p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer"
+                title="Delete live lecture"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-10">
       {/* Analytics Dashboard */}
@@ -534,10 +632,22 @@ ${lessons.map(l => `- "${l.title}" [Topic: ${l.topic}]`).join('\n') || 'No lectu
             }`}
           >
             <BookOpen className="w-3.5 h-3.5" />
-            Lessons ({lessons.length})
+            Lessons ({lessons.filter(l => !l.videoUrl).length})
           </button>
 
-          {!isAllView && !isLessonsOnlyView && !currentFolder && (
+          <button
+            onClick={() => setSearchParams({ view: 'live' })}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-2xs cursor-pointer ${
+              isLiveView
+                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+            }`}
+          >
+            <Video className="w-3.5 h-3.5" />
+            Live Lectures ({filteredLiveLessons.length})
+          </button>
+
+          {!isAllView && !isLessonsOnlyView && !isLiveView && !currentFolder && (
             <button
               onClick={() => setIsNewFolderOpen(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_4px_14px_rgba(37,99,235,0.25)] cursor-pointer"
@@ -631,9 +741,121 @@ ${lessons.map(l => `- "${l.title}" [Topic: ${l.topic}]`).join('\n') || 'No lectu
       )}
 
       {/* ========================================================================= */}
+      {/* VIEW MODE 2.5: LIVE LECTURES VIEW */}
+      {/* ========================================================================= */}
+      {isLiveView && (
+        <section className="space-y-8 animate-fadeIn">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center border border-rose-200/80 shadow-2xs">
+                <Video className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm text-slate-900 uppercase tracking-wider font-extrabold flex items-center gap-2">
+                  Live Lectures ({filteredLiveLessons.length})
+                </h2>
+                <p className="text-xs text-slate-500 font-sans">YouTube course videos with integrated note-taking and flashcard creation</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Add Live Lecture Form */}
+          <div className="bg-white/95 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-200/90 p-6 backdrop-blur-md">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center shadow-sm">
+                <Plus className="w-4 h-4 text-white" />
+              </div>
+              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Add Live Lecture</h3>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!liveLectureTitle.trim() || !liveLectureUrl.trim()) return;
+                const newLesson: Lesson = {
+                  id: crypto.randomUUID(),
+                  title: liveLectureTitle.trim(),
+                  topic: liveLectureTopic.trim() || 'Live Course',
+                  content: `# ${liveLectureTitle.trim()}\n\n*Start taking notes below the video...*\n`,
+                  videoUrl: liveLectureUrl.trim(),
+                  createdAt: Date.now(),
+                };
+                await addLesson(newLesson);
+                setLiveLectureTitle('');
+                setLiveLectureTopic('');
+                setLiveLectureUrl('');
+                navigate(`/lesson/${newLesson.id}`);
+              }}
+              className="grid sm:grid-cols-3 gap-3"
+            >
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Lecture Title *</label>
+                <input
+                  type="text"
+                  value={liveLectureTitle}
+                  onChange={(e) => setLiveLectureTitle(e.target.value)}
+                  placeholder="e.g. Binary Search Trees — Lecture 5"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-sans bg-slate-50/80 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition-all placeholder:text-slate-400"
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Topic / Subject</label>
+                <input
+                  type="text"
+                  value={liveLectureTopic}
+                  onChange={(e) => setLiveLectureTopic(e.target.value)}
+                  placeholder="e.g. Data Structures"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-sans bg-slate-50/80 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition-all placeholder:text-slate-400"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">YouTube URL *</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={liveLectureUrl}
+                    onChange={(e) => setLiveLectureUrl(e.target.value)}
+                    placeholder="https://youtube.com/watch?v=..."
+                    className="flex-1 px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-sans bg-slate-50/80 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition-all placeholder:text-slate-400"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-[0_4px_14px_rgba(225,29,72,0.25)] transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    <Video className="w-3.5 h-3.5" />
+                    Add
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {/* Live Lecture Cards Grid */}
+          {filteredLiveLessons.length === 0 ? (
+            <div className="text-center py-16 px-4 border-2 border-dashed border-slate-200 bg-white/60 rounded-3xl text-slate-500 font-sans text-sm shadow-xs">
+              <Video className="w-10 h-10 text-rose-300 mx-auto mb-3" />
+              <h3 className="text-base font-bold text-slate-800 mb-1">
+                {searchQuery ? `No live lectures matching "${searchQuery}"` : 'No live lectures yet'}
+              </h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Add a YouTube URL above to create your first live lecture with integrated note-taking.
+              </p>
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredLiveLessons.map(renderLiveLectureCard)}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ========================================================================= */}
       {/* VIEW MODE 3: DRILLED DOWN INTO A SPECIFIC FOLDER */}
       {/* ========================================================================= */}
-      {!isAllView && !isLessonsOnlyView && currentFolder && (
+      {!isAllView && !isLessonsOnlyView && !isLiveView && currentFolder && (
         <section className="space-y-8 animate-fadeIn">
           {/* Breadcrumb Navigation */}
           <div className="flex items-center justify-between">
@@ -785,7 +1007,7 @@ ${lessons.map(l => `- "${l.title}" [Topic: ${l.topic}]`).join('\n') || 'No lectu
       {/* ========================================================================= */}
       {/* VIEW MODE 4: ROOT FOLDERS + UNFILED DECKS & LESSONS (DEFAULT) */}
       {/* ========================================================================= */}
-      {!isAllView && !isLessonsOnlyView && !currentFolder && (
+      {!isAllView && !isLessonsOnlyView && !isLiveView && !currentFolder && (
         <div className="space-y-10">
           {/* Folders Section */}
           <section>
