@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   BookOpen,
   ArrowLeft,
@@ -15,7 +16,11 @@ import {
   Layers,
   Sparkles,
   Share2,
-  Folder as FolderIcon
+  Folder as FolderIcon,
+  Info,
+  AlertTriangle,
+  Lightbulb,
+  CheckCircle2
 } from 'lucide-react';
 import { useDecks } from '../store';
 import { MarkdownCodeRenderer } from '../components/CodeBlock';
@@ -130,12 +135,110 @@ export function LessonView() {
     }
   };
 
+  // Custom component renderers for Markdown
+  const markdownComponents = {
+    code: MarkdownCodeRenderer,
+    table: ({ children }: any) => (
+      <div className="my-6 overflow-x-auto rounded-2xl border border-slate-200/90 shadow-2xs bg-white">
+        <table className="w-full text-left text-xs border-collapse">
+          {children}
+        </table>
+      </div>
+    ),
+    thead: ({ children }: any) => (
+      <thead className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+        {children}
+      </thead>
+    ),
+    th: ({ children }: any) => (
+      <th className="px-4 py-3 font-extrabold text-slate-900 border-r border-slate-200/60 last:border-r-0">
+        {children}
+      </th>
+    ),
+    td: ({ children }: any) => (
+      <td className="px-4 py-3 text-slate-700 border-b border-slate-100 border-r border-slate-100 last:border-r-0 font-sans leading-relaxed">
+        {children}
+      </td>
+    ),
+    blockquote: ({ children }: any) => {
+      return (
+        <div className="my-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-slate-50 border-l-4 border-emerald-500 shadow-2xs text-emerald-950 not-italic">
+          <div className="flex items-start gap-3">
+            <Lightbulb className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="text-xs sm:text-sm font-sans leading-relaxed space-y-1">
+              {children}
+            </div>
+          </div>
+        </div>
+      );
+    },
+    h1: ({ children }: any) => (
+      <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-10 mb-4 pb-3 border-b border-slate-200/80 flex items-center gap-2">
+        {children}
+      </h1>
+    ),
+    h2: ({ children }: any) => (
+      <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight mt-8 mb-3 pb-2 border-b border-slate-100 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+        {children}
+      </h2>
+    ),
+    h3: ({ children }: any) => (
+      <h3 className="text-base font-bold text-slate-800 tracking-tight mt-6 mb-2">
+        {children}
+      </h3>
+    ),
+    h4: ({ children }: any) => (
+      <h4 className="text-sm font-bold text-slate-800 mt-4 mb-1.5 uppercase tracking-wide">
+        {children}
+      </h4>
+    ),
+    p: ({ children }: any) => (
+      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed my-3 font-sans">
+        {children}
+      </p>
+    ),
+    ul: ({ children }: any) => (
+      <ul className="list-disc list-inside space-y-1.5 my-3 pl-2 text-xs sm:text-sm text-slate-700 leading-relaxed font-sans">
+        {children}
+      </ul>
+    ),
+    ol: ({ children }: any) => (
+      <ol className="list-decimal list-inside space-y-1.5 my-3 pl-2 text-xs sm:text-sm text-slate-700 leading-relaxed font-sans">
+        {children}
+      </ol>
+    ),
+    li: ({ children }: any) => (
+      <li className="leading-relaxed text-slate-700">
+        {children}
+      </li>
+    ),
+    hr: () => (
+      <hr className="my-8 border-t border-slate-200/80" />
+    ),
+    a: ({ href, children }: any) => (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="text-emerald-600 hover:text-emerald-700 underline font-semibold transition-colors inline-flex items-center gap-1"
+      >
+        {children}
+      </a>
+    ),
+    strong: ({ children }: any) => (
+      <strong className="font-extrabold text-slate-900">
+        {children}
+      </strong>
+    )
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6">
       {/* Breadcrumb & Navigation */}
       <div className="flex items-center justify-between gap-4 mb-6">
         <Link
-          to={lesson.folderId ? `/?folder=${lesson.folderId}` : '/'}
+          to={lesson.folderId ? `/?folder=${lesson.folderId}` : '/?view=lessons'}
           className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors group"
         >
           <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
@@ -277,12 +380,13 @@ export function LessonView() {
       </div>
 
       {/* Note Content Section */}
-      <article className="bg-white/90 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-200/80 p-6 sm:p-10 backdrop-blur-md">
-        <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-headings:font-black prose-headings:tracking-tight prose-h1:text-2xl prose-h2:text-xl prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-2 prose-h2:mt-8 prose-h3:text-lg prose-p:text-slate-700 prose-p:leading-relaxed prose-li:text-slate-700 prose-strong:text-slate-900 prose-strong:font-bold prose-blockquote:border-l-4 prose-blockquote:border-emerald-500 prose-blockquote:bg-emerald-50/50 prose-blockquote:py-3 prose-blockquote:px-4 prose-blockquote:rounded-r-2xl prose-blockquote:text-emerald-950 prose-blockquote:not-italic prose-blockquote:my-6">
-          <ReactMarkdown components={{ code: MarkdownCodeRenderer }}>
-            {lesson.content}
-          </ReactMarkdown>
-        </div>
+      <article className="bg-white/95 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-200/90 p-6 sm:p-10 backdrop-blur-md">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={markdownComponents}
+        >
+          {lesson.content}
+        </ReactMarkdown>
       </article>
     </div>
   );

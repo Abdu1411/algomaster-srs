@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-clike';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-typescript';
 import 'prismjs/components/prism-dart';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-java';
+import 'prismjs/components/prism-c';
+import 'prismjs/components/prism-cpp';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-sql';
+import 'prismjs/components/prism-markdown';
 import { Check, Copy, Code2 } from 'lucide-react';
 
 interface CodeBlockProps {
@@ -25,20 +35,56 @@ export function CodeBlock({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const normalizedLang = language.toLowerCase();
   let highlighted = codeString;
   try {
-    const grammar = Prism?.languages?.[language] || Prism?.languages?.dart || Prism?.languages?.clike;
+    const grammar =
+      Prism?.languages?.[normalizedLang] ||
+      Prism?.languages?.dart ||
+      Prism?.languages?.clike ||
+      Prism?.languages?.javascript;
     if (grammar && codeString) {
-      highlighted = Prism.highlight(codeString, grammar, language);
+      highlighted = Prism.highlight(codeString, grammar, normalizedLang);
     }
   } catch {
-    // fallback
+    // fallback to unhighlighted text
   }
 
   const lines = codeString.split('\n');
 
+  // File extension helper
+  const getFilename = (lang: string) => {
+    switch (lang.toLowerCase()) {
+      case 'dart':
+        return 'solution.dart';
+      case 'python':
+      case 'py':
+        return 'solution.py';
+      case 'typescript':
+      case 'ts':
+        return 'solution.ts';
+      case 'javascript':
+      case 'js':
+        return 'solution.js';
+      case 'cpp':
+      case 'c++':
+        return 'solution.cpp';
+      case 'java':
+        return 'Solution.java';
+      case 'bash':
+      case 'sh':
+        return 'terminal.sh';
+      case 'json':
+        return 'data.json';
+      case 'sql':
+        return 'query.sql';
+      default:
+        return `${lang}.src`;
+    }
+  };
+
   return (
-    <div className="my-4 rounded-2xl overflow-hidden border border-slate-700/90 bg-[#0d1117] shadow-xl font-mono text-xs not-prose">
+    <div className="my-5 rounded-2xl overflow-hidden border border-slate-700/90 bg-[#0d1117] shadow-xl font-mono text-xs not-prose">
       {/* Editor Window Titlebar */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-slate-700/80 select-none">
         <div className="flex items-center gap-2.5">
@@ -49,10 +95,10 @@ export function CodeBlock({
           </div>
           <div className="flex items-center gap-1.5 text-slate-300 font-mono text-[11px]">
             <Code2 className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-slate-400 font-semibold">{language === 'dart' ? 'solution.dart' : `${language}.src`}</span>
+            <span className="text-slate-400 font-semibold">{getFilename(normalizedLang)}</span>
           </div>
           <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
-            {language.toUpperCase()}
+            {normalizedLang.toUpperCase()}
           </span>
         </div>
 
@@ -79,7 +125,7 @@ export function CodeBlock({
         <pre className="pl-4 font-mono text-xs overflow-x-auto whitespace-pre !bg-transparent !p-0 !m-0 flex-1 leading-relaxed">
           <code
             dangerouslySetInnerHTML={{ __html: highlighted }}
-            className={`language-${language}`}
+            className={`language-${normalizedLang}`}
           />
         </pre>
       </div>
@@ -88,18 +134,19 @@ export function CodeBlock({
 }
 
 // ReactMarkdown custom renderer for code elements
-export function MarkdownCodeRenderer({ inline, className, children, ...props }: any) {
+export function MarkdownCodeRenderer({ node, className, children, ...props }: any) {
   const match = /language-(\w+)/.exec(className || '');
-  const language = match ? match[1] : 'dart';
   const codeContent = String(children || '').replace(/\n$/, '');
+  const isMultiLine = codeContent.includes('\n');
 
-  if (inline) {
+  if (!match && !isMultiLine) {
     return (
-      <code className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 font-mono text-[12px] font-bold border border-blue-200/80" {...props}>
+      <code className="px-1.5 py-0.5 mx-0.5 rounded-md bg-slate-100 text-blue-700 font-mono text-[12px] font-semibold border border-slate-200" {...props}>
         {children}
       </code>
     );
   }
 
+  const language = match ? match[1] : 'dart';
   return <CodeBlock code={codeContent} language={language} />;
 }
