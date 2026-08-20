@@ -10,20 +10,23 @@ import { StudySession } from './pages/StudySession';
 import { LessonView } from './pages/LessonView';
 import { CourseViewer } from './pages/CourseViewer';
 import { ActiveViewProvider } from './context/ActiveViewContext';
+import { PomodoroProvider } from './context/PomodoroContext';
 
 export default function App() {
   return (
     <ActiveViewProvider>
-      <BrowserRouter>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/deck/:deckId" element={<StudySession />} />
-            <Route path="/lesson/:lessonId" element={<LessonView />} />
-            <Route path="/course/:courseId" element={<CourseViewer />} />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
+      <PomodoroProvider>
+        <BrowserRouter>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/deck/:deckId" element={<StudySession />} />
+              <Route path="/lesson/:lessonId" element={<LessonView />} />
+              <Route path="/course/:courseId" element={<CourseViewer />} />
+            </Routes>
+          </Layout>
+        </BrowserRouter>
+      </PomodoroProvider>
     </ActiveViewProvider>
   );
 }

@@ -69,7 +69,6 @@ export function LiveLectureModal({ isOpen, onClose, folders, onCreate, onBulkCre
           throw new Error('Direct fetch failed');
         }
       } catch (err) {
-        // Fallback to our local Vite proxy to bypass CORS and anti-bot systems
         try {
           const proxyUrl = `/api/proxy?url=${encodeURIComponent(bulkUrl)}`;
           const proxyRes = await fetch(proxyUrl);
@@ -79,10 +78,79 @@ export function LiveLectureModal({ isOpen, onClose, folders, onCreate, onBulkCre
           throw new Error('Could not fetch the URL. The page might be protected or invalid.');
         }
       }
+      
+      processExtractedText(text);
+    } catch (err: any) {
+      console.error(err);
+      setExtractError(err.message || 'Could not access the page. Check the URL or try again.');
+    } finally {
+      setIsExtracting(false);
+    }
+  };
 
-      const links: {title: string, url: string}[] = [];
-      let isJson = false;
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
+    setIsExtracting(true);
+    setExtractError('');
+    setExtractedLinks([]);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        if (!courseName) {
+           setCourseName(file.name.replace(/\.[^/.]+$/, ""));
+        }
+        processExtractedText(text, file.name);
+      } else {
+        setExtractError('Could not read file.');
+      }
+      setIsExtracting(false);
+    };
+    reader.onerror = () => {
+      setExtractError('Error reading file.');
+      setIsExtracting(false);
+    };
+    reader.readAsText(file);
+  };
+
+  const processExtractedText = (text: string, filename?: string) => {
+    const links: {title: string, url: string}[] = [];
+    let isJson = false;
+    let isCsv = filename?.toLowerCase().endsWith('.csv');
+
+    if (isCsv) {
+      const lines = text.split('\n');
+      lines.forEach((line, index) => {
+        if (!line.trim()) return;
+        const cols = line.split(',');
+        if (cols.length >= 2) {
+          let title = cols[0].trim();
+          let url = cols[1].trim();
+          if (title.startsWith('http')) {
+            url = cols[0].trim();
+            title = cols[1].trim();
+          }
+          title = title.replace(/^["']|["']$/g, '');
+          url = url.replace(/^["']|["']$/g, '');
+          
+          if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            if (!links.find(l => l.url === url)) {
+              links.push({ title: title || `Lecture ${index}`, url });
+            }
+          }
+        } else if (cols.length === 1) {
+          let url = cols[0].trim().replace(/^["']|["']$/g, '');
+          if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            if (!links.find(l => l.url === url)) {
+              links.push({ title: `Lecture ${index}`, url });
+            }
+          }
+        }
+      });
+    } else {
       try {
         const parsed = JSON.parse(text);
         isJson = true;
@@ -115,8 +183,6 @@ export function LiveLectureModal({ isOpen, onClose, folders, onCreate, onBulkCre
         }
       } catch (e) {
         // Not JSON, parse as HTML and extract ytInitialData for YouTube playlists
-        
-        // 1. Try to extract from ytInitialData (standard for YouTube)
         const ytMatch = text.match(/var ytInitialData = (\{.*?\});<\/script>/);
         if (ytMatch && ytMatch[1]) {
           try {
@@ -138,7 +204,6 @@ export function LiveLectureModal({ isOpen, onClose, folders, onCreate, onBulkCre
           }
         }
 
-        // 2. Fallback to DOM parsing for standard links and iframes
         const parser = new DOMParser();
         const doc = parser.parseFromString(text, 'text/html');
         
@@ -147,7 +212,6 @@ export function LiveLectureModal({ isOpen, onClose, folders, onCreate, onBulkCre
           const href = a.getAttribute('href') || '';
           if (href.includes('youtube.com/watch') || href.includes('youtu.be/')) {
             const title = a.textContent?.trim() || `Lecture ${index + 1}`;
-            // Extract pure video URL without list parameters if possible
             const cleanUrl = href.split('&list=')[0];
             if (!links.find(l => l.url === cleanUrl || l.url === href)) {
               links.push({ title, url: href });
@@ -166,25 +230,20 @@ export function LiveLectureModal({ isOpen, onClose, folders, onCreate, onBulkCre
            }
         });
       }
-      
-      if (links.length === 0) {
-        setExtractError('No YouTube videos or valid data found on this page.');
-      } else {
-        setExtractedLinks(links);
-        if (!courseName && !isJson) {
-           const parser = new DOMParser();
-           const doc = parser.parseFromString(text, 'text/html');
-           const pageTitle = doc.querySelector('title')?.textContent;
-           if (pageTitle) {
-             setCourseName(pageTitle.trim());
-           }
-        }
+    }
+    
+    if (links.length === 0) {
+      setExtractError('No YouTube videos or valid data found on this page.');
+    } else {
+      setExtractedLinks(links);
+      if (!courseName && !isJson && !isCsv) {
+         const parser = new DOMParser();
+         const doc = parser.parseFromString(text, 'text/html');
+         const pageTitle = doc.querySelector('title')?.textContent;
+         if (pageTitle) {
+           setCourseName(pageTitle.trim());
+         }
       }
-    } catch (err: any) {
-      console.error(err);
-      setExtractError(err.message || 'Could not access the page. Check the URL or try again.');
-    } finally {
-      setIsExtracting(false);
     }
   };
 
@@ -241,7 +300,7 @@ export function LiveLectureModal({ isOpen, onClose, folders, onCreate, onBulkCre
               tab === 'bulk' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            Bulk Web Link Import
+            Bulk Import
           </button>
         </div>
 
@@ -355,6 +414,24 @@ export function LiveLectureModal({ isOpen, onClose, folders, onCreate, onBulkCre
               placeholder="e.g. CS50 2024"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-800 text-xs font-sans"
             />
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1.5">
+              Upload JSON/HTML/CSV File
+            </label>
+            <input
+              type="file"
+              accept=".json,.html,.htm,.txt,.csv"
+              onChange={handleFileUpload}
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-rose-500 text-slate-800 text-xs font-sans file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300"
+            />
+          </div>
+
+          <div className="flex items-center gap-3 my-2 opacity-60">
+            <div className="h-px bg-slate-300 flex-1"></div>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">OR FETCH URL</span>
+            <div className="h-px bg-slate-300 flex-1"></div>
           </div>
 
           <div>

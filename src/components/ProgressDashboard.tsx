@@ -19,7 +19,7 @@ import { useDecks } from '../store';
 export function ProgressDashboard() {
   const { decks, stats, resetAllStats } = useDecks();
   const safeDecks = Array.isArray(decks) ? decks : [];
-  const { activityData = [], masteryData = [], weeklyVelocity = 0 } = stats || {};
+  const { activityData = [], masteryData = [], weeklyVelocity = 0, totalStudyTimeToday = 0, totalStudyTimeWeek = 0 } = stats || {};
 
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -83,8 +83,8 @@ export function ProgressDashboard() {
         </div>
       </div>
 
-      {/* 4 Summary Stat Mini Tiles */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* 5 Summary Stat Mini Tiles */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <div className="bg-white/90 rounded-2xl border border-slate-200/80 p-4 shadow-xs hover:border-blue-300 transition-all">
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[10px] font-bold uppercase tracking-wider">Total Decks</span>
@@ -126,6 +126,17 @@ export function ProgressDashboard() {
           <div className="flex items-baseline gap-1">
             <span className="text-2xl font-extrabold font-mono text-slate-900">{avgMastery}%</span>
             <span className="text-xs text-slate-400 font-medium">mastery</span>
+          </div>
+        </div>
+
+        <div className="bg-white/90 rounded-2xl border border-slate-200/80 p-4 shadow-xs hover:border-orange-300 transition-all">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider">Time Studied</span>
+            <Clock className="w-4 h-4 text-orange-600" />
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl font-extrabold font-mono text-slate-900">{Math.round(totalStudyTimeToday / 60)}</span>
+            <span className="text-xs text-slate-400 font-medium">min today</span>
           </div>
         </div>
       </div>

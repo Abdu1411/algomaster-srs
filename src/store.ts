@@ -10,12 +10,19 @@ export interface ReviewLog {
   timestamp: number;
 }
 
+export interface TimeLog {
+  id?: number;
+  date: number;
+  durationSeconds: number;
+}
+
 class AlgoDatabase extends Dexie {
   decks!: Table<Deck, string>;
   reviews!: Table<ReviewLog, number>;
   folders!: Table<Folder, string>;
   lessons!: Table<Lesson, string>;
   courses!: Table<Course, string>;
+  timeLogs!: Table<TimeLog, number>;
 
   constructor() {
     super('AlgoMasterDB');
@@ -45,6 +52,14 @@ class AlgoDatabase extends Dexie {
       lessons: 'id, title, folderId, createdAt',
       courses: 'id, title, createdAt'
     });
+    this.version(6).stores({
+      decks: 'id, title, folderId, createdAt',
+      reviews: '++id, deckId, cardId, timestamp',
+      folders: 'id, name, createdAt',
+      lessons: 'id, title, folderId, createdAt',
+      courses: 'id, title, createdAt',
+      timeLogs: '++id, date, durationSeconds'
+    });
   }
 }
 
@@ -58,12 +73,14 @@ export function useDecks() {
   const rawReviews = useLiveQuery(() => db.reviews.toArray(), [], EMPTY_ARRAY);
   const rawLessons = useLiveQuery(() => db.lessons.toArray(), [], EMPTY_ARRAY);
   const rawCourses = useLiveQuery(() => db.courses.toArray(), [], EMPTY_ARRAY);
+  const rawTimeLogs = useLiveQuery(() => db.timeLogs.toArray(), [], EMPTY_ARRAY);
 
   const decks = Array.isArray(rawDecks) ? rawDecks : EMPTY_ARRAY;
   const folders = Array.isArray(rawFolders) ? rawFolders : EMPTY_ARRAY;
   const reviews = Array.isArray(rawReviews) ? rawReviews : EMPTY_ARRAY;
   const lessons = Array.isArray(rawLessons) ? rawLessons : EMPTY_ARRAY;
   const courses = Array.isArray(rawCourses) ? rawCourses : EMPTY_ARRAY;
+  const timeLogs = Array.isArray(rawTimeLogs) ? rawTimeLogs : EMPTY_ARRAY;
 
   const addDeck = async (deck: Deck) => {
     await db.decks.add(deck);
@@ -215,6 +232,24 @@ export function useDecks() {
     });
   };
 
+  const logStudyTime = async (durationSeconds: number) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    
+    // Check if there is already a log for today
+    const todaysLog = await db.timeLogs.where('date').equals(today).first();
+    if (todaysLog && todaysLog.id) {
+      await db.timeLogs.update(todaysLog.id, {
+        durationSeconds: todaysLog.durationSeconds + durationSeconds
+      });
+    } else {
+      await db.timeLogs.add({
+        date: today,
+        durationSeconds: durationSeconds
+      });
+    }
+  };
+
   // Reset all study statistics and review logs
   const resetAllStats = async () => {
     await db.reviews.clear();
@@ -308,11 +343,25 @@ export function useDecks() {
       masteryData.push({ subject: '---', level: 0, fullMark: 100 });
     }
 
+    let totalStudyTimeToday = 0;
+    let totalStudyTimeWeek = 0;
+
+    timeLogs.forEach((log: TimeLog) => {
+      if (log.date === today) {
+        totalStudyTimeToday += log.durationSeconds;
+      }
+      if (log.date >= today - (6 * dayMs)) {
+        totalStudyTimeWeek += log.durationSeconds;
+      }
+    });
+
     return {
       streak,
       weeklyVelocity,
       activityData: sortedWeekData,
-      masteryData
+      masteryData,
+      totalStudyTimeToday,
+      totalStudyTimeWeek
     };
   };
 
@@ -342,6 +391,7 @@ export function useDecks() {
     addCourse,
     deleteCourse,
     logReview, 
+    logStudyTime,
     resetAllStats, 
     stats: getStats() 
   };

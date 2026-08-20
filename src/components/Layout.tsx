@@ -3,6 +3,7 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { BrainCircuit, ArrowLeft, Sparkles, Flame } from 'lucide-react';
 import { useDecks } from '../store';
 import { AskAIModal } from './AskAIModal';
+import { PomodoroTimer } from './PomodoroTimer';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -39,6 +40,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <PomodoroTimer />
             <button
               onClick={() => setIsAskAiOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 text-purple-700 border border-purple-200/80 shadow-2xs cursor-pointer group"
