@@ -25,6 +25,7 @@ import { MoveResourceModal } from '../components/modals/MoveResourceModal';
 import { RenameDeckModal } from '../components/modals/RenameDeckModal';
 import { LiveLectureModal } from '../components/modals/LiveLectureModal';
 import { CustomStudyModal } from '../components/CustomStudyModal';
+import { DeckCardsModal } from '../components/modals/DeckCardsModal';
 
 export function Home() {
   const navigate = useNavigate();
@@ -38,7 +39,9 @@ export function Home() {
     addDeck,
     deleteDeck,
     renameDeck,
+    updateCard,
     addCardToDeck,
+    deleteCardFromDeck,
     addFolder,
     updateFolder,
     deleteFolder,
@@ -92,6 +95,7 @@ export function Home() {
   const [deckToMove, setDeckToMove] = useState<Deck | null>(null);
   const [lessonToMove, setLessonToMove] = useState<Lesson | null>(null);
   const [deckToRename, setDeckToRename] = useState<Deck | null>(null);
+  const [deckToBrowseCards, setDeckToBrowseCards] = useState<Deck | null>(null);
   const [isLiveModalOpen, setIsLiveModalOpen] = useState(false);
 
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
@@ -270,6 +274,7 @@ Lecture Notes (${safeLessons.length}): ${safeLessons.map((l) => `"${l.title}" [$
               onDeleteDeck={(id) => deleteDeck(id)}
               onOpenCustomStudy={handleOpenCustomStudy}
               onNavigateTab={handleSelectTab}
+              onOpenBrowseDeckCards={(d) => setDeckToBrowseCards(d)}
             />
           )}
 
@@ -368,6 +373,15 @@ Lecture Notes (${safeLessons.length}): ${safeLessons.map((l) => `"${l.title}" [$
         onClose={() => setIsCustomModalOpen(false)}
         decks={safeDecks}
         initialDeckId={selectedDeckForCustom}
+      />
+
+      <DeckCardsModal
+        deck={deckToBrowseCards ? safeDecks.find(d => d.id === deckToBrowseCards.id) || deckToBrowseCards : null}
+        isOpen={!!deckToBrowseCards}
+        onClose={() => setDeckToBrowseCards(null)}
+        onUpdateCard={(deckId, updatedCard) => updateCard(deckId, updatedCard)}
+        onDeleteCard={(deckId, cardId) => deleteCardFromDeck(deckId, cardId)}
+        onAddCard={(deckId, newCard) => addCardToDeck(deckId, newCard)}
       />
 
       <AskAIModal

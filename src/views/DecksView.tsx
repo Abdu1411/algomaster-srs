@@ -35,6 +35,7 @@ interface DecksViewProps {
   onDeleteDeck: (deckId: string) => void;
   onOpenCustomStudy: (deckId: string) => void;
   onNavigateTab: (tab: WorkspaceTab) => void;
+  onOpenBrowseDeckCards?: (deck: Deck) => void;
 }
 
 type SortOption = 'due' | 'cards' | 'name' | 'recent';
@@ -52,7 +53,8 @@ export function DecksView({
   onOpenRenameDeck,
   onDeleteDeck,
   onOpenCustomStudy,
-  onNavigateTab
+  onNavigateTab,
+  onOpenBrowseDeckCards
 }: DecksViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('due');
@@ -407,6 +409,15 @@ export function DecksView({
                         {deck.title}
                       </h3>
                       <div className="flex items-center gap-1 shrink-0 ml-2">
+                        {onOpenBrowseDeckCards && (
+                          <button
+                            onClick={() => onOpenBrowseDeckCards(deck)}
+                            className="text-slate-400 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer"
+                            title="Browse & Edit Flashcards"
+                          >
+                            <Layers className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           onClick={() => onOpenRenameDeck(deck)}
                           className="text-slate-400 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer"

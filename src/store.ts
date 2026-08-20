@@ -89,6 +89,14 @@ export function useDecks() {
     }
   };
 
+  const deleteCardFromDeck = async (deckId: string, cardId: string) => {
+    const deck = await db.decks.get(deckId);
+    if (deck) {
+      deck.cards = deck.cards.filter(card => card.id !== cardId);
+      await db.decks.put(deck);
+    }
+  };
+
   // Folder Operations
   const addFolder = async (name: string, color?: string): Promise<Folder> => {
     const newFolder: Folder = {
@@ -294,6 +302,7 @@ export function useDecks() {
     renameDeck,
     updateCard, 
     addCardToDeck, 
+    deleteCardFromDeck,
     addFolder,
     updateFolder,
     deleteFolder,

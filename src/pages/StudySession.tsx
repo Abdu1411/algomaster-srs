@@ -8,9 +8,10 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { ArrowLeft, CheckCircle2, Code2, Loader2, Sparkles, Sliders, Play, RotateCcw, Bot } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Code2, Loader2, Sparkles, Sliders, Play, RotateCcw, Bot, Edit3 } from 'lucide-react';
 import { CodeEditor } from '../components/CodeEditor';
 import { CustomStudyModal } from '../components/CustomStudyModal';
+import { EditCardModal } from '../components/modals/EditCardModal';
 import { CodeBlock, MarkdownCodeRenderer } from '../components/CodeBlock';
 import { useActiveView } from '../context/ActiveViewContext';
 
@@ -62,8 +63,9 @@ export function StudySession() {
   const [completedCount, setCompletedCount] = useState(0);
   const [sessionFinished, setSessionFinished] = useState(false);
 
-  // Custom study modal state
+  // Custom study & edit modal state
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const currentCard = sessionCards[currentIndex];
 
@@ -352,7 +354,17 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
               </span>
             )}
           </div>
-          <span className="text-slate-400 font-mono text-[10px]">ID: {currentCard.id.split('-')[0].toUpperCase()}</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsEditModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs"
+              title="Edit this flashcard"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit Card</span>
+            </button>
+            <span className="text-slate-400 font-mono text-[10px]">ID: {currentCard.id.split('-')[0].toUpperCase()}</span>
+          </div>
         </div>
 
         {/* Front Question Content */}
@@ -529,6 +541,21 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
         decks={decks}
         initialDeckId={deckId}
       />
+
+      {/* Edit Current Card Modal */}
+      {currentCard && (
+        <EditCardModal
+          card={currentCard}
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          onSave={(updatedCard) => {
+            updateCard(currentCard.deckId, updatedCard);
+            setSessionCards(prev =>
+              prev.map((c, i) => (i === currentIndex ? { ...updatedCard, deckId: c.deckId } : c))
+            );
+          }}
+        />
+      )}
     </div>
   );
 }
