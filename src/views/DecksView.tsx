@@ -18,7 +18,7 @@ import {
   BookOpen,
   Sparkles
 } from 'lucide-react';
-import { Deck, Folder, Lesson } from '../types';
+import { Deck, Folder, Lesson, CardType, ARCHETYPE_CONFIG } from '../types';
 import { WorkspaceTab } from '../components/Sidebar';
 
 interface DecksViewProps {
@@ -462,7 +462,7 @@ export function DecksView({
                     )}
 
                     {/* Stats Bar */}
-                    <div className="flex items-center gap-4 mb-5 p-3 bg-slate-50/70 rounded-2xl border border-slate-100">
+                    <div className="flex items-center gap-4 mb-3 p-3 bg-slate-50/70 rounded-2xl border border-slate-100">
                       <div className="text-xs flex flex-col flex-1">
                         <span className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Total</span>
                         <span className="font-mono font-bold text-slate-800 text-sm">{deck.cards.length} cards</span>
@@ -475,6 +475,38 @@ export function DecksView({
                         </span>
                       </div>
                     </div>
+
+                    {/* 1-Click Archetype Study Pills */}
+                    {hasCards && (
+                      <div className="mb-4">
+                        <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 block mb-1.5">
+                          Study by Archetype:
+                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {(() => {
+                            const counts: Record<string, number> = {};
+                            deck.cards.forEach(c => {
+                              const t = c.type || 'Concept';
+                              counts[t] = (counts[t] || 0) + 1;
+                            });
+                            return Object.entries(counts).map(([type, count]) => {
+                              const meta = ARCHETYPE_CONFIG[type as CardType] || ARCHETYPE_CONFIG.Concept;
+                              return (
+                                <Link
+                                  key={type}
+                                  to={`/deck/${deck.id}?types=${type}&filter=all`}
+                                  title={`Study ${count} ${meta.label} (${type}) cards in this deck`}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${meta.bg} ${meta.text} ${meta.border} border hover:scale-105 transition-transform shadow-2xs`}
+                                >
+                                  <span>{meta.icon}</span>
+                                  <span>{count}</span>
+                                </Link>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 flex gap-2">

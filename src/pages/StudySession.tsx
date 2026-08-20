@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useDecks } from '../store';
 import { calculateNextReview, Grade } from '../srs';
@@ -102,11 +102,19 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
   const mode = searchParams.get('mode') || 'due';
   const filter = searchParams.get('filter') || (mode === 'all' ? 'all' : 'due');
   const typesParam = searchParams.get('types');
+  const typeParam = searchParams.get('type');
   const limitParam = searchParams.get('limit');
   const shuffleParam = searchParams.get('shuffle');
   const updateSrsParam = searchParams.get('updateSrs');
 
   const shouldUpdateSrs = updateSrsParam !== 'false';
+
+  const effectiveTypes = useMemo(() => {
+    return (typesParam || typeParam || '')
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean) as CardType[];
+  }, [typesParam, typeParam]);
 
   const loadCards = () => {
     if (decks.length === 0) return;
@@ -120,12 +128,14 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
       pool = currentDeck.cards.map(c => ({ ...c, deckId: currentDeck.id }));
     }
 
-    // Apply filter
+    // Filter by archetype if specified
+    if (effectiveTypes.length > 0) {
+      pool = pool.filter(c => effectiveTypes.includes(c.type));
+    }
+
+    // Apply due / hardest filter
     if (filter === 'due') {
       pool = pool.filter(c => c.nextReview <= Date.now());
-    } else if (filter === 'types' && typesParam) {
-      const allowedTypes = typesParam.split(',') as CardType[];
-      pool = pool.filter(c => allowedTypes.includes(c.type));
     } else if (filter === 'hardest') {
       pool = [...pool].sort((a, b) => a.ease - b.ease || a.reps - b.reps);
     }
@@ -309,11 +319,17 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
           >
             <ArrowLeft className="w-4 h-4" /> Exit Session
           </button>
-          {filter !== 'due' && (
+
+          {effectiveTypes.length > 0 ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+              <span>🎯</span>
+              <span>{effectiveTypes.join(', ')} Archetype</span>
+            </span>
+          ) : filter !== 'due' ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200">
               ⚡ Custom Study ({filter})
             </span>
-          )}
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">

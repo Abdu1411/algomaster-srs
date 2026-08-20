@@ -15,7 +15,7 @@ import {
   Bot
 } from 'lucide-react';
 import { ProgressDashboard } from '../components/ProgressDashboard';
-import { Deck, Folder, Lesson } from '../types';
+import { Deck, Folder, Lesson, CardType, ARCHETYPE_CONFIG } from '../types';
 import { WorkspaceTab } from '../components/Sidebar';
 
 interface DashboardViewProps {
@@ -60,8 +60,30 @@ export function DashboardView({
 
   // Recent lessons (last 3)
   const recentLessons = [...safeLessons]
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 3);
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 4);
+
+  const archetypeStats = React.useMemo(() => {
+    const allCards = safeDecks.flatMap(d => d.cards || []);
+    const counts: Record<string, { total: number; due: number }> = {};
+
+    (Object.keys(ARCHETYPE_CONFIG) as CardType[]).forEach(type => {
+      counts[type] = { total: 0, due: 0 };
+    });
+
+    allCards.forEach(c => {
+      const type = c.type || 'Concept';
+      if (!counts[type]) {
+        counts[type] = { total: 0, due: 0 };
+      }
+      counts[type].total += 1;
+      if (c.nextReview <= Date.now()) {
+        counts[type].due += 1;
+      }
+    });
+
+    return counts;
+  }, [safeDecks]);
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -144,6 +166,82 @@ export function DashboardView({
 
       {/* Progress & Retention Dashboard */}
       <ProgressDashboard />
+
+      {/* 🎯 Study by Archetype Hub */}
+      <section className="bg-white/95 rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-7 backdrop-blur-md relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+              <span className="text-lg">🎯</span>
+              Study by Note Archetype
+            </h2>
+            <p className="text-xs text-slate-500 font-sans mt-0.5">
+              Target a specific cognitive skill: time complexity proofs, Cloze blanks, loop invariants, or Dart coding
+            </p>
+          </div>
+
+          <span className="text-[11px] font-mono font-bold text-slate-400 self-start sm:self-auto bg-slate-100 px-2.5 py-1 rounded-xl">
+            9 Note Archetypes
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3.5">
+          {(Object.entries(ARCHETYPE_CONFIG) as [CardType, typeof ARCHETYPE_CONFIG[CardType]][]).map(([archKey, meta]) => {
+            const stats = archetypeStats[archKey] || { total: 0, due: 0 };
+            const hasCards = stats.total > 0;
+            const studyUrl = stats.due > 0
+              ? `/deck/all?types=${archKey}&filter=due`
+              : `/deck/all?types=${archKey}&filter=all`;
+
+            return (
+              <div
+                key={archKey}
+                className={`p-4 rounded-2xl border transition-all duration-200 flex flex-col justify-between ${
+                  hasCards
+                    ? 'bg-white hover:bg-slate-50/80 border-slate-200/90 hover:border-blue-300 shadow-2xs hover:shadow-md hover:-translate-y-0.5'
+                    : 'bg-slate-50/50 border-slate-200/60 opacity-60'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-xl">{meta.icon}</span>
+                    {stats.due > 0 ? (
+                      <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                        {stats.due} due
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono font-bold text-slate-400">
+                        {stats.total} cards
+                      </span>
+                    )}
+                  </div>
+
+                  <h3 className="text-xs font-bold text-slate-900 tracking-tight mb-1">
+                    {meta.label}
+                  </h3>
+                  <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${meta.bg} ${meta.text} inline-block mb-3`}>
+                    {archKey}
+                  </span>
+                </div>
+
+                {hasCards ? (
+                  <Link
+                    to={studyUrl}
+                    className="inline-flex items-center justify-center gap-1.5 w-full py-2 bg-slate-100 hover:bg-blue-600 text-slate-700 hover:text-white rounded-xl text-[11px] font-bold transition-all cursor-pointer shadow-2xs group"
+                  >
+                    <Play className="w-3 h-3 fill-current group-hover:text-white" />
+                    <span>Study ({stats.total})</span>
+                  </Link>
+                ) : (
+                  <span className="text-center text-[10px] text-slate-400 py-1.5 font-sans">
+                    0 cards created
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Recent Activity Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
