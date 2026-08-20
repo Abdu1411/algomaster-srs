@@ -572,7 +572,7 @@ app.post('/api/format-card-archetype', async (req, res) => {
     - Concept: "Why" & core intuition. Front poses an active recall question. Back provides concise, authoritative explanation.
     - Complexity: Big-O analysis. Front asks for time/space complexity and worst-case bounds. Back gives exact Big-O and mathematical proof ($O(N)$, $O(\\log N)$).
     - Pattern: Recognition of algorithmic patterns (Two Pointers, Monotonic Queue, Sliding Window, Bit Manipulation, etc.).
-    - Cloze: Fill-in-the-blank active recall using [___] for the key formula, invariant, or method call.
+    - Cloze: Fill-in-the-blank active recall using {{c1::key term or formula}} in the front question for the key invariant, formula, or method call.
     - Comparison: Structured head-to-head comparison highlighting time/space trade-offs between two approaches.
     - Trace: Step-by-step state simulation or recursion tree trace.
     - Invariant: Loop or structural invariants that guarantee correctness.

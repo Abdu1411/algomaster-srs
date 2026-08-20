@@ -18,6 +18,30 @@ interface SessionCard extends Card {
   deckId: string;
 }
 
+/**
+ * Formats front text for Cloze deletion cards, replacing {{c1::answer}}, {{c1:answer}},
+ * or any {{...}} with "[ ... ]" to hide the answer during active recall.
+ */
+function formatClozeQuestion(frontText: string): string {
+  if (!frontText) return '';
+  return frontText.replace(/{{(?:c\d+[:]{1,2}\s*)?(.*?)}}/gs, () => {
+    return '`[ ... ]`';
+  });
+}
+
+/**
+ * Formats front text when answer is revealed, showing the full sentence with the
+ * revealed answer emphasized in bold (**answer**).
+ */
+function formatClozeAnswer(frontText: string): string {
+  if (!frontText) return '';
+  return frontText.replace(/{{(?:c\d+[:]{1,2}\s*)?(.*?)}}/gs, (_match, content) => {
+    const parts = (content || '').split(/::|(?<=\w):(?=\w)/);
+    const answer = (parts[0] || content || '').trim();
+    return `**${answer}**`;
+  });
+}
+
 export function StudySession() {
   const { deckId } = useParams<{ deckId: string }>();
   const [searchParams] = useSearchParams();
@@ -339,10 +363,8 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
               rehypePlugins={[rehypeKatex]}
               components={{ code: MarkdownCodeRenderer }}
             >
-              {currentCard.type === 'Cloze'
-                ? currentCard.front.replace(/{{(?:c\d+::)?([^}:]+)(?:::([^}]+))?}}/g, (match, p1, p2) => {
-                    return `\`[${p2 || '...'}]\``;
-                  })
+              {currentCard.type === 'Cloze' || currentCard.front.includes('{{')
+                ? formatClozeQuestion(currentCard.front)
                 : currentCard.front}
             </ReactMarkdown>
           </div>
@@ -436,14 +458,14 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
                 </div>
               ) : (
                 <div className="prose prose-slate prose-blue max-w-none bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
-                  {currentCard.type === 'Cloze' && (
+                  {(currentCard.type === 'Cloze' || currentCard.front.includes('{{')) && (
                     <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-sm">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkMath]}
                         rehypePlugins={[rehypeKatex]}
                         components={{ code: MarkdownCodeRenderer }}
                       >
-                        {currentCard.front.replace(/{{(?:c\d+::)?([^}:]+)(?:::([^}]+))?}}/g, '**$1**')}
+                        {formatClozeAnswer(currentCard.front)}
                       </ReactMarkdown>
                     </div>
                   )}
