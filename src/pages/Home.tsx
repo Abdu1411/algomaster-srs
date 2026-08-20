@@ -26,6 +26,7 @@ import { RenameDeckModal } from '../components/modals/RenameDeckModal';
 import { LiveLectureModal } from '../components/modals/LiveLectureModal';
 import { CustomStudyModal } from '../components/CustomStudyModal';
 import { DeckCardsModal } from '../components/modals/DeckCardsModal';
+import { ImportPDFModal } from '../components/modals/ImportPDFModal';
 
 export function Home() {
   const navigate = useNavigate();
@@ -97,6 +98,7 @@ export function Home() {
   const [deckToRename, setDeckToRename] = useState<Deck | null>(null);
   const [deckToBrowseCards, setDeckToBrowseCards] = useState<Deck | null>(null);
   const [isLiveModalOpen, setIsLiveModalOpen] = useState(false);
+  const [isImportPDFOpen, setIsImportPDFOpen] = useState(false);
 
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
   const [selectedDeckForCustom, setSelectedDeckForCustom] = useState<string>('all');
@@ -285,6 +287,7 @@ Lecture Notes (${safeLessons.length}): ${safeLessons.map((l) => `"${l.title}" [$
               onOpenMoveLesson={(l) => setLessonToMove(l)}
               onDeleteLesson={(id) => deleteLesson(id)}
               onNavigateTab={handleSelectTab}
+              onOpenImportPDF={() => setIsImportPDFOpen(true)}
             />
           )}
 
@@ -366,6 +369,13 @@ Lecture Notes (${safeLessons.length}): ${safeLessons.map((l) => `"${l.title}" [$
         onClose={() => setIsLiveModalOpen(false)}
         folders={safeFolders}
         onCreate={handleCreateLiveLecture}
+      />
+
+      <ImportPDFModal
+        isOpen={isImportPDFOpen}
+        onClose={() => setIsImportPDFOpen(false)}
+        folders={safeFolders}
+        onAddLesson={addLesson}
       />
 
       <CustomStudyModal

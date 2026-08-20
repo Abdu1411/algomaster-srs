@@ -230,7 +230,7 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || e.key === 'Esc') {
         onClose();
       }
     };
@@ -243,7 +243,14 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 md:p-8 bg-slate-950/70 backdrop-blur-md animate-fadeIn">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 md:p-8 bg-slate-950/70 backdrop-blur-md animate-fadeIn"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="bg-white border border-slate-200/90 rounded-3xl w-full max-w-4xl lg:max-w-5xl h-[90vh] max-h-[880px] flex flex-col shadow-[0_25px_80px_rgba(0,0,0,0.35)] overflow-hidden relative animate-scaleIn my-auto">
         {/* Glow accent */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500"></div>
@@ -267,17 +274,6 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
                 Full-screen pop-up AI assistant with real-time access to your active flashcards, notes, & code
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-              title="Close / Exit modal (Esc)"
-            >
-              <X className="w-4 h-4" />
-              <span>Exit</span>
-            </button>
           </div>
         </div>
 
@@ -363,16 +359,6 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', contextInfo }: 
                 className="w-full px-4 py-3 pb-12 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-slate-800 text-xs font-sans placeholder-slate-400 transition-all resize-none shadow-2xs"
               />
               <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-3 py-1.5 bg-slate-200/80 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-all inline-flex items-center gap-1 cursor-pointer"
-                  title="Exit AI Assistant"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  Exit
-                </button>
-
                 <button
                   type="submit"
                   disabled={isLoading || !inquiry.trim()}

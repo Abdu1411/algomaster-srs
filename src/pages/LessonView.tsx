@@ -39,6 +39,7 @@ import {
 import { useDecks } from '../store';
 import { MarkdownCodeRenderer } from '../components/CodeBlock';
 import { YouTubeEmbed, YouTubePlayerHandle } from '../components/YouTubeEmbed';
+import { PDFViewer } from '../components/PDFViewer';
 import { RichNoteEditor } from '../components/RichNoteEditor';
 import { ManualCardCreator } from '../components/ManualCardCreator';
 import { Deck, Card, Lesson } from '../types';
@@ -61,14 +62,94 @@ export function LessonView() {
   const [isCardCreatorOpen, setIsCardCreatorOpen] = useState(false);
   const playerRef = useRef<YouTubePlayerHandle>(null);
 
-  // Video time tracking
-  const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
-  const [videoPauseTime, setVideoPauseTime] = useState<number>(0);
+  // Associated deck & card presence check
+  const associatedDeck = React.useMemo(() => {
+    if (!lesson) return null;
+    const cleanTitle = lesson.title
+      .replace(/^\[Live\]\s*/i, '')
+      .replace(/^CS Note:\s*/i, '')
+      .replace(/\s*\(SRS Cards\)/i, '')
+      .trim()
+      .toLowerCase();
+
+    return decks.find((d) => {
+      const dTitle = d.title.toLowerCase().replace(/\s*\(srs cards\)/i, '').trim();
+      if (!dTitle) return false;
+      return (
+        dTitle === cleanTitle ||
+        dTitle.includes(cleanTitle) ||
+        cleanTitle.includes(dTitle) ||
+        (lesson.topic && lesson.topic.toLowerCase() !== 'computer science' && dTitle.includes(lesson.topic.toLowerCase())) ||
+        (lesson.folderId && d.folderId === lesson.folderId && (dTitle.includes(cleanTitle) || cleanTitle.includes(dTitle)))
+      );
+    });
+  }, [decks, lesson]);
+
+  const hasFlashcards = Boolean(associatedDeck && (associatedDeck.cards?.length ?? 0) > 0);
+
+  // Video time tracking & persistent resume
+  const savedStartTime = React.useMemo(() => {
+    if (!lessonId) return 0;
+    try {
+      const local = localStorage.getItem(`yt_progress_${lessonId}`);
+      if (local) {
+        const parsed = parseFloat(local);
+        if (!isNaN(parsed) && parsed > 0) return Math.floor(parsed);
+      }
+    } catch { /* ignore */ }
+    return lesson?.lastWatchedTime ? Math.floor(lesson.lastWatchedTime) : 0;
+  }, [lessonId, lesson?.lastWatchedTime]);
+
+  const [videoCurrentTime, setVideoCurrentTime] = useState<number>(savedStartTime);
+  const [videoPauseTime, setVideoPauseTime] = useState<number>(savedStartTime);
+  const lastSavedTimeRef = useRef<number>(savedStartTime);
+
+  const handleTimeUpdate = (currentTime: number) => {
+    const rounded = Math.floor(currentTime);
+    setVideoCurrentTime(rounded);
+
+    // Persist progress to localStorage every 2s
+    if (Math.abs(rounded - lastSavedTimeRef.current) >= 2) {
+      lastSavedTimeRef.current = rounded;
+      if (lessonId) {
+        try {
+          localStorage.setItem(`yt_progress_${lessonId}`, String(rounded));
+        } catch { /* ignore */ }
+      }
+      // Persist to database every 5s
+      if (lesson && Math.abs(rounded - (lesson.lastWatchedTime || 0)) >= 5) {
+        updateLesson({ ...lesson, lastWatchedTime: rounded });
+      }
+    }
+  };
 
   const handleVideoPause = (currentTime: number) => {
-    const rounded = Math.round(currentTime);
+    const rounded = Math.floor(currentTime);
     if (rounded > 0) {
       setVideoPauseTime(rounded);
+      lastSavedTimeRef.current = rounded;
+      if (lessonId) {
+        try {
+          localStorage.setItem(`yt_progress_${lessonId}`, String(rounded));
+        } catch { /* ignore */ }
+      }
+      if (lesson) {
+        updateLesson({ ...lesson, lastWatchedTime: rounded });
+      }
+    }
+  };
+
+  const handleRestartVideo = () => {
+    playerRef.current?.seekTo(0);
+    setVideoCurrentTime(0);
+    lastSavedTimeRef.current = 0;
+    if (lessonId) {
+      try {
+        localStorage.setItem(`yt_progress_${lessonId}`, '0');
+      } catch { /* ignore */ }
+    }
+    if (lesson) {
+      updateLesson({ ...lesson, lastWatchedTime: 0 });
     }
   };
 
@@ -113,339 +194,213 @@ ${lesson.content}`,
     );
   }
 
-  const handleCopyMarkdown = () => {
-    navigator.clipboard.writeText(lesson.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleSaveTitle = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editTitleValue.trim()) return;
-    await updateLesson({
-      ...lesson,
-      title: editTitleValue.trim()
-    });
-    setIsEditingTitle(false);
+  const handleCopyMarkdown = async () => {
+    if (lesson) {
+      await navigator.clipboard.writeText(lesson.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this lecture note?')) {
       await deleteLesson(lesson.id);
-      navigate('/');
+      navigate(lesson.folderId ? `/?tab=decks&folder=${lesson.folderId}` : (lesson.videoUrl ? '/?tab=live' : '/?tab=lessons'));
     }
   };
 
-  const handleExportToLesson = async (contentToExport?: string) => {
-    const finalContent = contentToExport || lesson.content;
-    const now = Date.now();
-
-    // Ensure folder exists under the live lecture title
-    let targetFolderId = lesson.folderId;
-    const lessonTitleTrimmed = lesson.title.trim();
-    const existingFolder = folders.find(
-      f => f.name.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase()
-    );
-
-    if (existingFolder) {
-      targetFolderId = existingFolder.id;
-    } else {
-      const createdFolder = await addFolder(lessonTitleTrimmed, '#e11d48');
-      targetFolderId = createdFolder.id;
-    }
-
-    if (!lesson.folderId || lesson.folderId !== targetFolderId) {
-      await updateLesson({ ...lesson, folderId: targetFolderId });
-    }
-
-    const exportedLesson: Lesson = {
-      id: crypto.randomUUID(),
-      title: `${lessonTitleTrimmed} (Lecture Notes)`,
-      topic: lesson.topic || 'Exported Notes',
-      content: finalContent,
-      folderId: targetFolderId,
-      createdAt: now,
-      sources: lesson.sources || (lesson.videoUrl ? [lesson.videoUrl] : undefined),
-      sourceUrl: lesson.videoUrl,
-    };
-
-    await addLesson(exportedLesson);
-    navigate(`/lesson/${exportedLesson.id}`);
+  const handleSaveTitle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTitleValue.trim()) return;
+    await updateLesson({ ...lesson, title: editTitleValue.trim() });
+    setIsEditingTitle(false);
   };
 
-  const handleSynthesizeFlashcards = async () => {
-    setIsSynthesizingCards(true);
+  const handleExportToLesson = async (customContent?: string) => {
     try {
-      const response = await fetch('/api/generate-deck', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: lesson.title,
-          url: lesson.sourceUrl || lesson.videoUrl,
-          rawText: lesson.content,
-          count: 8 // High-yield deck covering core CS archetypes with LaTeX math
-        })
-      });
+      const contentToExport = customContent || lesson.content;
+      const cleanTitle = lesson.title.replace(/^\[Live\]\s*/i, '').trim();
+      const newLessonId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
+      const titleToUse = cleanTitle.startsWith('CS Note:') ? cleanTitle : `CS Note: ${cleanTitle}`;
+      const newLesson: Lesson = {
+        id: newLessonId,
+        title: titleToUse,
+        topic: lesson.topic,
+        content: contentToExport,
+        sources: [lesson.videoUrl ? `Video Lecture: ${lesson.title}` : (lesson.pdfUrl ? `PDF: ${lesson.pdfFilename || lesson.title}` : lesson.title)],
+        folderId: lesson.folderId,
+        createdAt: Date.now(),
+      };
+      await addLesson(newLesson);
 
-      const responseText = await response.text();
-      let data: any = null;
-      try {
-        data = responseText ? JSON.parse(responseText) : [];
-      } catch (err) {
-        throw new Error(`Server returned invalid response: ${responseText.slice(0, 100)}`);
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || `Failed with status ${response.status}`);
-      }
-
-      const generatedCards = Array.isArray(data) ? data : data.cards || [];
-      if (!generatedCards.length) {
-        throw new Error('Could not synthesize flashcards from this note.');
-      }
-
-      const now = Date.now();
-      const newCardsWithIds = generatedCards.map((c: any) => ({
-        ...c,
-        id: crypto.randomUUID(),
-        nextReview: now,
-        interval: 0,
-        ease: 2.5,
-        reps: 0
-      })) as Card[];
-
-      // 1. Ensure folder under the same name as the live lesson exists
-      let targetFolderId = lesson.folderId;
-      const lessonTitleTrimmed = lesson.title.trim();
-      const existingFolder = folders.find(
-        f => f.name.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase()
-      );
-
-      if (existingFolder) {
-        targetFolderId = existingFolder.id;
-      } else {
-        const createdFolder = await addFolder(lessonTitleTrimmed, '#e11d48');
-        targetFolderId = createdFolder.id;
-      }
-
-      // Link lesson to folder if not linked yet
-      if (!lesson.folderId || lesson.folderId !== targetFolderId) {
-        await updateLesson({ ...lesson, folderId: targetFolderId });
-      }
-
-      // 2. Keep adding cards to the SAME deck as long as user keeps making them
-      const existingDeck = decks.find(
-        d =>
-          (d.folderId === targetFolderId && (d.title.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase() || d.title.includes(lessonTitleTrimmed))) ||
-          d.title.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase()
-      );
-
-      if (existingDeck) {
-        // Append cards to the existing deck
-        const updatedDeck: Deck = {
-          ...existingDeck,
-          folderId: targetFolderId,
-          cards: [...existingDeck.cards, ...newCardsWithIds]
-        };
-        await updateDeck(updatedDeck);
-        navigate(`/deck/${updatedDeck.id}`);
-      } else {
-        // Create the master deck for this live lesson in its folder
-        const newDeck: Deck = {
-          id: crypto.randomUUID(),
-          title: lessonTitleTrimmed,
-          folderId: targetFolderId,
-          createdAt: now,
-          cards: newCardsWithIds
-        };
-        await addDeck(newDeck);
-        navigate(`/deck/${newDeck.id}`);
-      }
-    } catch (err: any) {
-      console.error(err);
-      alert(`Failed to synthesize deck: ${err.message}`);
-    } finally {
-      setIsSynthesizingCards(false);
+      alert(`✅ Successfully exported to standalone CS Lesson Note: "${newLesson.title}"!`);
+      navigate(`/lesson/${newLesson.id}`);
+    } catch (err) {
+      console.error('Export to lesson failed:', err);
+      alert('Failed to export to lesson.');
     }
   };
 
   const handleScrubLesson = async () => {
     setIsScrubbingLesson(true);
     try {
-      const response = await fetch('/api/scrub-lesson', {
+      const promptText = lesson.videoUrl
+        ? `Video lecture title: "${lesson.title}". Video URL: ${lesson.videoUrl}.\nExisting Student Notes:\n${lesson.content}`
+        : (lesson.pdfUrl ? `PDF Document: "${lesson.pdfFilename || lesson.title}".\nNotes:\n${lesson.content}` : lesson.content);
+
+      const targetUrl = lesson.videoUrl || lesson.pdfUrl;
+
+      const res = await fetch('/api/generate-lesson', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topic: lesson.title,
-          url: lesson.videoUrl || lesson.sourceUrl,
-          rawText: lesson.content
-        })
+          url: targetUrl,
+          urls: targetUrl ? [targetUrl] : [],
+          rawText: promptText
+        }),
       });
 
-      const responseText = await response.text();
-      let data: any = null;
-      try {
-        data = responseText ? JSON.parse(responseText) : {};
-      } catch (err) {
-        throw new Error(`Server returned invalid response: ${responseText.slice(0, 100)}`);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || `Server error (${res.status}): Failed to generate lesson`);
       }
 
-      if (!response.ok) {
-        throw new Error(data.error || `Failed with status ${response.status}`);
-      }
-
-      // Ensure folder under the same name as the live lesson exists
-      let targetFolderId = lesson.folderId;
-      const lessonTitleTrimmed = lesson.title.trim();
-      const existingFolder = folders.find(
-        f => f.name.trim().toLowerCase() === lessonTitleTrimmed.toLowerCase()
-      );
-
-      if (existingFolder) {
-        targetFolderId = existingFolder.id;
+      const data = await res.json();
+      if (data && data.content) {
+        const fullNewContent = `${data.content}\n\n---\n\n## 📝 Student Real-time Notes\n${lesson.content}`;
+        await updateLesson({
+          ...lesson,
+          content: fullNewContent,
+          title: data.title || lesson.title,
+          topic: data.topic || lesson.topic,
+        });
+        setActiveResource({
+          title: lesson.title,
+          type: 'lesson',
+          contextText: fullNewContent,
+        });
+        alert('🎉 Successfully generated structured Professor-grade CS Lecture Notes!');
       } else {
-        const createdFolder = await addFolder(lessonTitleTrimmed, '#e11d48');
-        targetFolderId = createdFolder.id;
+        alert('AI did not return content. Please check your notes.');
       }
-
-      if (!lesson.folderId || lesson.folderId !== targetFolderId) {
-        await updateLesson({ ...lesson, folderId: targetFolderId });
-      }
-
-      const now = Date.now();
-      const createdLesson: Lesson = {
-        id: crypto.randomUUID(),
-        title: data.title || `${lessonTitleTrimmed} (Lecture Notes)`,
-        topic: data.topic || lesson.topic || 'CS Lecture Notes',
-        content: data.content || lesson.content,
-        folderId: targetFolderId,
-        createdAt: now,
-        sources: lesson.videoUrl ? [lesson.videoUrl] : undefined,
-        sourceUrl: lesson.videoUrl,
-      };
-
-      await addLesson(createdLesson);
-      navigate(`/lesson/${createdLesson.id}`);
     } catch (err: any) {
-      console.error(err);
-      alert(`Failed to scrub lecture: ${err.message}`);
+      console.error('Failed to scrub lesson:', err);
+      alert(`Lesson generation failed: ${err.message || 'Please check your API key.'}`);
     } finally {
       setIsScrubbingLesson(false);
     }
   };
 
-  // Custom component renderers for Markdown
-  const markdownComponents = {
-    code: MarkdownCodeRenderer,
-    table: ({ children }: any) => (
-      <div className="my-6 overflow-x-auto rounded-2xl border border-slate-200/90 shadow-2xs bg-white">
-        <table className="w-full text-left text-xs border-collapse">
-          {children}
-        </table>
-      </div>
-    ),
-    thead: ({ children }: any) => (
-      <thead className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-bold text-slate-800 uppercase tracking-wider">
-        {children}
-      </thead>
-    ),
-    th: ({ children }: any) => (
-      <th className="px-4 py-3 font-extrabold text-slate-900 border-r border-slate-200/60 last:border-r-0">
-        {children}
-      </th>
-    ),
-    td: ({ children }: any) => (
-      <td className="px-4 py-3 text-slate-700 border-b border-slate-100 border-r border-slate-100 last:border-r-0 font-sans leading-relaxed">
-        {children}
-      </td>
-    ),
-    blockquote: ({ children }: any) => {
-      return (
-        <div className="my-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-slate-50 border-l-4 border-emerald-500 shadow-2xs text-emerald-950 not-italic">
-          <div className="flex items-start gap-3">
-            <Lightbulb className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <div className="text-xs sm:text-sm font-sans leading-relaxed space-y-1">
-              {children}
-            </div>
-          </div>
-        </div>
-      );
-    },
-    h1: ({ children }: any) => (
-      <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-10 mb-4 pb-3 border-b border-slate-200/80 flex items-center gap-2">
-        {children}
-      </h1>
-    ),
-    h2: ({ children }: any) => (
-      <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight mt-8 mb-3 pb-2 border-b border-slate-100 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-        {children}
-      </h2>
-    ),
-    h3: ({ children }: any) => (
-      <h3 className="text-base font-bold text-slate-800 tracking-tight mt-6 mb-2">
-        {children}
-      </h3>
-    ),
-    h4: ({ children }: any) => (
-      <h4 className="text-sm font-bold text-slate-800 mt-4 mb-1.5 uppercase tracking-wide">
-        {children}
-      </h4>
-    ),
-    p: ({ children }: any) => (
-      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed my-3 font-sans">
-        {children}
-      </p>
-    ),
-    ul: ({ children }: any) => (
-      <ul className="list-disc list-inside space-y-1.5 my-3 pl-2 text-xs sm:text-sm text-slate-700 leading-relaxed font-sans">
-        {children}
-      </ul>
-    ),
-    ol: ({ children }: any) => (
-      <ol className="list-decimal list-inside space-y-1.5 my-3 pl-2 text-xs sm:text-sm text-slate-700 leading-relaxed font-sans">
-        {children}
-      </ol>
-    ),
-    li: ({ children }: any) => (
-      <li className="leading-relaxed text-slate-700">
-        {children}
-      </li>
-    ),
-    hr: () => (
-      <hr className="my-8 border-t border-slate-200/80" />
-    ),
-    a: ({ href, children }: any) => (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className="text-emerald-600 hover:text-emerald-700 underline font-semibold transition-colors inline-flex items-center gap-1"
-      >
-        {children}
-      </a>
-    ),
-    strong: ({ children }: any) => (
-      <strong className="font-extrabold text-slate-900">
-        {children}
-      </strong>
-    )
+  const handleSynthesizeFlashcards = async () => {
+    setIsSynthesizingCards(true);
+    try {
+      let targetDeck = decks.find((d) => d.title.toLowerCase().includes(lesson.title.toLowerCase()) || d.title.toLowerCase().includes(lesson.topic.toLowerCase()));
+
+      let deckIdToUse = targetDeck?.id;
+
+      if (!deckIdToUse) {
+        const cleanTitle = lesson.title.replace(/^\[Live\]\s*/i, '').trim();
+        const newDeckId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
+        const newDeck: Deck = {
+          id: newDeckId,
+          title: `${cleanTitle} (SRS Cards)`,
+          cards: [],
+          folderId: lesson.folderId,
+          createdAt: Date.now(),
+        };
+        await addDeck(newDeck);
+        deckIdToUse = newDeck.id;
+      }
+
+      const targetUrl = lesson.videoUrl || lesson.pdfUrl;
+
+      const res = await fetch('/api/generate-deck', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: lesson.title,
+          url: targetUrl,
+          urls: targetUrl ? [targetUrl] : [],
+          rawText: lesson.content,
+          count: 8,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || `Server error (${res.status}): Failed to generate cards`);
+      }
+
+      const data = await res.json();
+      const generatedCards = Array.isArray(data) ? data : ((data && data.cards) || []);
+
+      if (generatedCards.length > 0) {
+        for (const cardData of generatedCards) {
+          const cardId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
+          const newCard: Card = {
+            id: cardId,
+            type: cardData.type || 'Concept',
+            front: cardData.front,
+            back: cardData.back,
+            codeSnippet: cardData.codeSnippet,
+            nextReview: Date.now(),
+            interval: 1,
+            ease: 2.5,
+            reps: 0,
+          };
+          await addCardToDeck(deckIdToUse, newCard);
+        }
+        alert(`🎉 Successfully synthesized ${generatedCards.length} active recall flashcards into deck!`);
+      } else {
+        alert('AI did not return any cards. Try refining your notes.');
+      }
+    } catch (err: any) {
+      console.error('Failed to synthesize flashcards:', err);
+      alert(`Synthesis failed: ${err.message || 'Please check your API key.'}`);
+    } finally {
+      setIsSynthesizingCards(false);
+    }
   };
 
+  const formatTimestamp = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleInsertTimestamp = () => {
+    const timeSec = playerRef.current?.getCurrentTime() || videoCurrentTime || 0;
+    const stampText = `\n\n⏱️ **[${formatTimestamp(timeSec)}]** `;
+    const updated = (lesson.content || '') + stampText;
+    updateLesson({ ...lesson, content: updated });
+    setActiveResource({
+      title: lesson.title,
+      type: 'lesson',
+      contextText: updated,
+    });
+  };
+
+  const hasVideo = Boolean(lesson.videoUrl);
+  const hasPDF = Boolean(lesson.pdfUrl);
+  const isDualPane = hasVideo || hasPDF;
+
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6">
-      {/* Breadcrumb & Navigation */}
-      <div className="flex items-center justify-between gap-4 mb-6">
+    <div className={`${isDualPane ? 'max-w-[1720px]' : 'max-w-4xl'} mx-auto py-6 px-4 sm:px-6 lg:px-8 transition-all`}>
+      {/* Top Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <Link
-          to={lesson.folderId ? `/?tab=decks&folder=${lesson.folderId}` : (lesson.videoUrl ? '/?tab=live' : '/?tab=lessons')}
-          className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors group"
+          to={lesson.folderId ? `/?tab=decks&folder=${lesson.folderId}` : (hasVideo ? '/?tab=live' : '/?tab=lessons')}
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors group cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-          {parentFolder ? `Back to 📁 ${parentFolder.name}` : (lesson.videoUrl ? 'Back to Live Lectures' : 'Back to Lecture Notes')}
+          {parentFolder
+            ? `Back to 📁 ${parentFolder.name}`
+            : (hasVideo ? 'Back to Live Lectures' : (hasPDF ? 'Back to Documents & Lessons' : 'Back to Lecture Notes'))}
         </Link>
 
-        <div className="flex items-center gap-2">
-          {lesson.videoUrl && (
+        <div className="flex flex-wrap items-center gap-2">
+          {hasVideo && (
             <button
               onClick={() => handleExportToLesson()}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer"
@@ -458,7 +413,7 @@ ${lesson.content}`,
 
           <button
             onClick={handleCopyMarkdown}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer"
             title="Copy entire markdown note"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
@@ -476,16 +431,23 @@ ${lesson.content}`,
       </div>
 
       {/* Lesson Header Hero Card */}
-      <div className="bg-white/95 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-200/90 p-6 sm:p-8 backdrop-blur-md mb-8 relative overflow-hidden">
+      <div className="bg-white/95 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-200/90 p-5 sm:p-6 backdrop-blur-md mb-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent rounded-full blur-3xl pointer-events-none"></div>
 
-        <div className="relative z-10 space-y-4">
+        <div className="relative z-10 space-y-3">
           {/* Badges row */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold font-mono">
               <BookOpen className="w-3.5 h-3.5" />
               {lesson.topic}
             </span>
+
+            {hasPDF && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-semibold font-mono">
+                <FileText className="w-3.5 h-3.5" />
+                PDF Document ({lesson.pdfPages || 1} pages)
+              </span>
+            )}
 
             {parentFolder && (
               <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-full text-xs font-semibold">
@@ -567,9 +529,7 @@ ${lesson.content}`,
                       let displayDomain = src;
                       try {
                         displayDomain = new URL(src).hostname.replace('www.', '');
-                      } catch {
-                        // fallback
-                      }
+                      } catch {}
                       return (
                         <a
                           key={i}
@@ -599,134 +559,341 @@ ${lesson.content}`,
             );
           })()}
 
-          {/* Quick Action: Convert to Flashcards (Only shown for standard CS notes, live lectures use timestamp synthesizer) */}
-          {!lesson.videoUrl && (
-            <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <p className="text-xs text-slate-500">
-                Turn these lecture notes into active recall flashcards to memorize with spaced repetition.
-              </p>
+          {/* Quick Action: Convert to Flashcards (Shown only when NO flashcards exist yet for this lesson/topic) */}
+          {!isDualPane && (
+            hasFlashcards ? (
+              <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-indigo-50/50 -mx-5 sm:-mx-6 -mb-5 sm:-mb-6 p-4 rounded-b-3xl border-t border-indigo-100/80">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shadow-2xs">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">
+                      {associatedDeck!.cards.length} Active Recall Flashcards Ready
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Linked Deck: <span className="font-semibold text-indigo-700">{associatedDeck!.title}</span>
+                    </p>
+                  </div>
+                </div>
 
-              <button
-                onClick={() => handleSynthesizeFlashcards()}
-                disabled={isSynthesizingCards}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-md transition-all disabled:opacity-50 cursor-pointer whitespace-nowrap"
-              >
-                {isSynthesizingCards ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Generating 25 Flashcards...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 text-amber-300" />
-                    Synthesize SRS Flashcards
-                  </>
-                )}
-              </button>
-            </div>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to={`/deck/${associatedDeck!.id}`}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    Study Deck ({associatedDeck!.cards.length})
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <p className="text-xs text-slate-500">
+                  Turn these lecture notes into active recall flashcards to memorize with spaced repetition.
+                </p>
+
+                <button
+                  onClick={() => handleSynthesizeFlashcards()}
+                  disabled={isSynthesizingCards}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-md transition-all disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                >
+                  {isSynthesizingCards ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Generating Flashcards...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      Synthesize SRS Flashcards
+                    </>
+                  )}
+                </button>
+              </div>
+            )
           )}
         </div>
       </div>
 
-        {/* Video Embed & Live Lecture AI Suite */}
-        {lesson.videoUrl && (
-          <div className="space-y-6 mb-8">
-            <YouTubeEmbed
-              ref={playerRef}
-              videoUrl={lesson.videoUrl}
-              onPause={handleVideoPause}
-              onTimeUpdate={(t) => setVideoCurrentTime(t)}
-            />
+      {/* Main Workspace Layout */}
+      {isDualPane ? (
+        /* Side-by-Side Dual Pane Layout for Video / PDF & Notes */
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+          {/* Left Column: Media Viewer (Video or PDF) */}
+          <div className="xl:col-span-7 2xl:col-span-7 space-y-5">
+            {hasVideo && (
+              <div className="bg-white/98 rounded-3xl p-4 sm:p-5 shadow-md border border-slate-200/90 space-y-4 backdrop-blur-md">
+                <YouTubeEmbed
+                  ref={playerRef}
+                  videoUrl={lesson.videoUrl!}
+                  initialStartTime={savedStartTime}
+                  onPause={handleVideoPause}
+                  onTimeUpdate={handleTimeUpdate}
+                />
 
-            {/* Make Flashcards Action Button */}
-            <div className="flex items-center justify-end">
+                {/* Video Toolbar: Timestamp, Progress & Actions */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleInsertTimestamp}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-rose-50 text-slate-800 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer shadow-2xs"
+                      title="Insert current video timestamp into notes"
+                    >
+                      <Timer className="w-4 h-4 text-rose-500" />
+                      <span>+ Timestamp [{formatTimestamp(videoCurrentTime)}]</span>
+                    </button>
+
+                    {videoCurrentTime > 5 && (
+                      <button
+                        type="button"
+                        onClick={handleRestartVideo}
+                        className="inline-flex items-center gap-1 px-2.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+                        title="Restart video from 00:00"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Restart</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 ml-auto">
+                    <button
+                      type="button"
+                      onClick={handleScrubLesson}
+                      disabled={isScrubbingLesson || isSynthesizingCards}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all disabled:opacity-50 cursor-pointer active:scale-95 whitespace-nowrap"
+                      title="Generate structured professor-grade lecture notes from this video lecture"
+                    >
+                      {isScrubbingLesson ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <BookOpen className="w-4 h-4" />
+                          Generate CS Lesson
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSynthesizeFlashcards}
+                      disabled={isSynthesizingCards || isScrubbingLesson}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all disabled:opacity-50 cursor-pointer active:scale-95 whitespace-nowrap"
+                      title="Make 8 active recall flashcards from this lecture"
+                    >
+                      {isSynthesizingCards ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Making...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 text-amber-300" />
+                          Make Flashcards
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {hasPDF && (
+              <div className="space-y-4">
+                <PDFViewer
+                  pdfUrl={lesson.pdfUrl!}
+                  filename={lesson.pdfFilename || lesson.title}
+                  pageCount={lesson.pdfPages}
+                />
+
+                {/* PDF Action Toolbar */}
+                <div className="bg-white/98 rounded-3xl p-4 shadow-sm border border-slate-200/90 flex flex-wrap items-center justify-between gap-3 backdrop-blur-md">
+                  <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700">
+                    <FileText className="w-4 h-4 text-rose-500" />
+                    <span>{lesson.pdfFilename || 'Imported PDF Document'}</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 ml-auto">
+                    <button
+                      type="button"
+                      onClick={handleScrubLesson}
+                      disabled={isScrubbingLesson || isSynthesizingCards}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all disabled:opacity-50 cursor-pointer active:scale-95 whitespace-nowrap"
+                      title="Synthesize structured study guide from this PDF"
+                    >
+                      {isScrubbingLesson ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <BookOpen className="w-4 h-4" />
+                          Generate CS Lesson
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSynthesizeFlashcards}
+                      disabled={isSynthesizingCards || isScrubbingLesson}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all disabled:opacity-50 cursor-pointer active:scale-95 whitespace-nowrap"
+                      title="Make flashcards from this PDF"
+                    >
+                      {isSynthesizingCards ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Making...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 text-amber-300" />
+                          Make Flashcards
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* In-Lesson Flashcard Forge */}
+            <div className="bg-white/98 rounded-3xl shadow-sm border border-slate-200/90 p-5 backdrop-blur-md">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200/80 shadow-2xs">
+                    <PenTool className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-xs text-slate-900 uppercase tracking-wider font-extrabold">
+                      Create Flashcards from this {hasPDF ? 'PDF Document' : 'Lecture'}
+                    </h2>
+                    <p className="text-[11px] text-slate-500 font-sans">
+                      Craft Concept, Complexity, Cloze, or Dart Code cards while studying
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsCardCreatorOpen(!isCardCreatorOpen)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                >
+                  {isCardCreatorOpen ? (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5" /> Collapse
+                    </>
+                  ) : (
+                    <>
+                      <PenTool className="w-3.5 h-3.5" /> Open Forge
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {isCardCreatorOpen && (
+                <div className="mt-4 pt-4 border-t border-slate-100 animate-fadeIn">
+                  <ManualCardCreator
+                    decks={decks}
+                    onAddDeck={addDeck}
+                    onAddCard={addCardToDeck}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: Large Interactive Note-Taking Studio */}
+          <div className="xl:col-span-5 2xl:col-span-5 space-y-4">
+            <RichNoteEditor
+              content={lesson.content}
+              customHeightClass="min-h-[500px] sm:min-h-[560px] 2xl:min-h-[640px] max-h-[780px]"
+              onStartTyping={() => {
+                playerRef.current?.pause();
+                const t = playerRef.current?.getCurrentTime() || 0;
+                if (t > 0) {
+                  setVideoPauseTime(Math.round(t));
+                }
+              }}
+              onExportToLesson={hasVideo || hasPDF ? handleExportToLesson : undefined}
+              onChange={async (newContent) => {
+                await updateLesson({ ...lesson, content: newContent });
+                setActiveResource({
+                  title: lesson.title,
+                  type: 'lesson',
+                  contextText: newContent,
+                });
+              }}
+            />
+          </div>
+        </div>
+      ) : (
+        /* Standard Single-Column CS Lecture Note Document View */
+        <div className="space-y-8">
+          <RichNoteEditor
+            content={lesson.content}
+            onChange={async (newContent) => {
+              await updateLesson({ ...lesson, content: newContent });
+              setActiveResource({
+                title: lesson.title,
+                type: 'lesson',
+                contextText: newContent,
+              });
+            }}
+          />
+
+          {/* In-Lesson Flashcard Forge */}
+          <div className="bg-white/95 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-200/90 p-6 backdrop-blur-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200/80 shadow-2xs">
+                  <PenTool className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm text-slate-900 uppercase tracking-wider font-extrabold flex items-center gap-2">
+                    Create Flashcards from this Lecture
+                  </h2>
+                  <p className="text-xs text-slate-500 font-sans">
+                    Craft Concept, Complexity, Cloze, Pattern, or Code implementation cards while studying
+                  </p>
+                </div>
+              </div>
+
               <button
                 type="button"
-                onClick={handleSynthesizeFlashcards}
-                disabled={isSynthesizingCards}
-                className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold rounded-2xl text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer active:scale-95 whitespace-nowrap"
+                onClick={() => setIsCardCreatorOpen(!isCardCreatorOpen)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
               >
-                {isSynthesizingCards ? (
+                {isCardCreatorOpen ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Making Flashcards...
+                    <ChevronUp className="w-3.5 h-3.5" /> Collapse Forge
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4 text-amber-300" />
-                    Make Flashcards
+                    <PenTool className="w-3.5 h-3.5" /> Open Flashcard Forge
                   </>
                 )}
               </button>
             </div>
-          </div>
-        )}
 
-        {/* Rich Note Editor */}
-        <RichNoteEditor
-          content={lesson.content}
-          onStartTyping={() => {
-            playerRef.current?.pause();
-            const t = playerRef.current?.getCurrentTime() || 0;
-            if (t > 0) {
-              setVideoPauseTime(Math.round(t));
-            }
-          }}
-          onExportToLesson={lesson.videoUrl ? handleExportToLesson : undefined}
-          onChange={async (newContent) => {
-            await updateLesson({ ...lesson, content: newContent });
-            setActiveResource({
-              title: lesson.title,
-              type: 'lesson',
-              contextText: newContent,
-            });
-          }}
-        />
-
-        {/* In-Lesson Flashcard Forge */}
-        <div className="mt-8 bg-white/95 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-200/90 p-6 backdrop-blur-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200/80 shadow-2xs">
-                <PenTool className="w-4 h-4" />
+            {isCardCreatorOpen && (
+              <div className="mt-6 pt-6 border-t border-slate-100 animate-fadeIn">
+                <ManualCardCreator
+                  decks={decks}
+                  onAddDeck={addDeck}
+                  onAddCard={addCardToDeck}
+                />
               </div>
-              <div>
-                <h2 className="text-sm text-slate-900 uppercase tracking-wider font-extrabold flex items-center gap-2">
-                  Create Flashcards from this Lecture
-                </h2>
-                <p className="text-xs text-slate-500 font-sans">
-                  Craft Concept, Complexity, Cloze, Pattern, or Code implementation cards while studying
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIsCardCreatorOpen(!isCardCreatorOpen)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-            >
-              {isCardCreatorOpen ? (
-                <>
-                  <ChevronUp className="w-3.5 h-3.5" /> Collapse Forge
-                </>
-              ) : (
-                <>
-                  <PenTool className="w-3.5 h-3.5" /> Open Flashcard Forge
-                </>
-              )}
-            </button>
+            )}
           </div>
-
-          {isCardCreatorOpen && (
-            <div className="mt-6 pt-6 border-t border-slate-100 animate-fadeIn">
-              <ManualCardCreator
-                decks={decks}
-                onAddDeck={addDeck}
-                onAddCard={addCardToDeck}
-              />
-            </div>
-          )}
         </div>
-      </div>
+      )}
+    </div>
   );
 }

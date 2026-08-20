@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useDecks } from '../store';
 import { calculateNextReview, Grade } from '../srs';
 import { Card, CardType, ARCHETYPE_CONFIG } from '../types';
@@ -51,11 +51,14 @@ export function StudySession() {
   const { decks, folders, updateCard, deleteCardFromDeck, logReview } = useDecks();
   const { setActiveResource, openAskAi } = useActiveView();
 
-  const isAllDecks = deckId === 'all';
+  const isUniversal = deckId === 'universal' || deckId === 'all' || deckId === 'master';
+  const isAllDecks = isUniversal;
   const isFolder = deckId?.startsWith('folder-');
   const folderId = isFolder ? deckId.replace('folder-', '') : null;
   const currentFolder = folders?.find(f => f.id === folderId);
-  const currentDeck = decks.find(d => d.id === deckId);
+  const currentDeck = isUniversal
+    ? { id: 'universal', title: 'Universal Master Deck', cards: decks.flatMap(d => d.cards), createdAt: Date.now() } as any
+    : decks.find(d => d.id === deckId);
 
   const [sessionCards, setSessionCards] = useState<SessionCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -117,6 +120,9 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
       .filter(Boolean) as CardType[];
   }, [typesParam, typeParam]);
 
+  const sessionKey = `${deckId || ''}?${searchParams.toString()}`;
+  const loadedSessionKeyRef = React.useRef<string | null>(null);
+
   const loadCards = () => {
     if (decks.length === 0) return;
 
@@ -134,15 +140,18 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
       pool = pool.filter(c => effectiveTypes.includes(c.type));
     }
 
-    // Apply due / hardest filter
+    // Apply due / hardest / newest filter
     if (filter === 'due') {
       pool = pool.filter(c => c.nextReview <= Date.now());
+      pool.sort((a, b) => (a.nextReview || 0) - (b.nextReview || 0));
     } else if (filter === 'hardest') {
       pool = [...pool].sort((a, b) => a.ease - b.ease || a.reps - b.reps);
+    } else if (filter === 'newest') {
+      pool = [...pool].sort((a, b) => ((b as any).createdAt || 0) - ((a as any).createdAt || 0));
     }
 
-    // Shuffle if enabled
-    if (shuffleParam !== 'false') {
+    // Shuffle if explicitly requested via query parameter
+    if (shuffleParam === 'true') {
       pool = [...pool].sort(() => Math.random() - 0.5);
     }
 
@@ -161,8 +170,12 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
   };
 
   useEffect(() => {
-    loadCards();
-  }, [decks, deckId, searchParams]);
+    if (decks.length === 0) return;
+    if (loadedSessionKeyRef.current !== sessionKey) {
+      loadedSessionKeyRef.current = sessionKey;
+      loadCards();
+    }
+  }, [decks.length, sessionKey]);
 
   const isImplementationCard =
     currentCard?.type === 'Implementation' ||
@@ -177,6 +190,11 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeTag = document.activeElement?.tagName.toLowerCase();
       if (activeTag === 'input' || activeTag === 'textarea') return;
+
+      if (e.key === 'Escape') {
+        navigate('/');
+        return;
+      }
 
       if (e.code === 'Space' && !showAnswer && !isImplementationCard) {
         e.preventDefault();
@@ -230,14 +248,26 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-6">
+            <button
+              onClick={() => {
+                loadedSessionKeyRef.current = null;
+                loadCards();
+              }}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-[0_4px_16px_rgba(37,99,235,0.25)] cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Study Again
+            </button>
+
             {totalDeckCards > 0 && (
               <button
                 onClick={() => {
+                  loadedSessionKeyRef.current = null;
                   navigate(isAllDecks ? '/deck/all?mode=custom&filter=all' : `/deck/${deckId}?mode=custom&filter=all`);
                 }}
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-[0_4px_16px_rgba(37,99,235,0.25)] cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 shadow-2xs transition-all cursor-pointer"
               >
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="w-4 h-4 text-blue-600" />
                 Review All ({totalDeckCards} Cards)
               </button>
             )}
@@ -251,13 +281,16 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
             </button>
           </div>
 
-          <button
-            onClick={() => navigate('/')}
-            className="inline-flex items-center justify-center gap-2 px-6 py-2.5 text-slate-500 hover:text-slate-800 font-sans text-xs uppercase tracking-wider transition-all cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Decks
-          </button>
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50/80 border border-slate-200/60 shadow-2xs transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" />
+              <span>Back to Workspace</span>
+            </button>
+          </div>
         </div>
 
         <CustomStudyModal
@@ -271,7 +304,9 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
   }
 
   const handleGrade = (grade: Grade) => {
-    if (shouldUpdateSrs && currentCard) {
+    if (!currentCard) return;
+
+    if (shouldUpdateSrs) {
       const updatedCard = calculateNextReview(currentCard, grade);
       updateCard(currentCard.deckId, updatedCard);
       logReview(currentCard.deckId, currentCard.id, grade);
@@ -279,20 +314,24 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
 
     setCompletedCount(prev => prev + 1);
 
-    if (grade === 'Again' && currentCard) {
-      // Re-queue card to be reviewed again in this same study session (Anki SM-2 style)
+    if (grade === 'Again') {
+      // Re-queue card to be reviewed again at the end of this same session (Anki SM-2 style)
       const requeuedCard: SessionCard = { ...currentCard, isRequeued: true };
       setSessionCards(prev => [...prev, requeuedCard]);
-    }
-
-    // Move to next card
-    if (currentIndex < sessionCards.length - 1 || grade === 'Again') {
       setCurrentIndex(prev => prev + 1);
       setShowAnswer(false);
       setCode('');
       setEvalResult(null);
     } else {
-      setSessionFinished(true);
+      // Move to next card
+      if (currentIndex < sessionCards.length - 1) {
+        setCurrentIndex(prev => prev + 1);
+        setShowAnswer(false);
+        setCode('');
+        setEvalResult(null);
+      } else {
+        setSessionFinished(true);
+      }
     }
   };
 
@@ -338,13 +377,6 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
       {/* Session Top Bar */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/')}
-            className="text-slate-500 hover:text-blue-600 inline-flex items-center gap-1.5 transition-colors font-bold text-xs uppercase tracking-wider cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" /> Exit Session
-          </button>
-
           {effectiveTypes.length > 0 ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
               <span>🎯</span>
@@ -410,9 +442,10 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
                     <span>Re-learning</span>
                   </span>
                 )}
-                {isAllDecks && originDeck && (
-                  <span className="text-[11px] font-sans font-medium text-slate-500 truncate max-w-[180px]">
-                    [{originDeck.title}]
+                {isUniversal && originDeck && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-sans font-bold bg-purple-50 text-purple-700 border border-purple-200 truncate max-w-[220px]" title={`Origin Deck: ${originDeck.title}`}>
+                    <span>🗂️</span>
+                    <span>{originDeck.title}</span>
                   </span>
                 )}
               </div>

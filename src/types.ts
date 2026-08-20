@@ -63,6 +63,10 @@ export interface Lesson {
   folderId?: string;
   createdAt: number;
   videoUrl?: string; // YouTube embed URL for live courses
+  pdfUrl?: string; // Uploaded PDF URL for in-app viewing
+  pdfFilename?: string; // Original uploaded PDF filename
+  pdfPages?: number; // Total number of pages in the PDF
+  lastWatchedTime?: number; // Last playback timestamp in seconds
   multimedia?: MediaItem[]; // Array of attached media items
 }
 

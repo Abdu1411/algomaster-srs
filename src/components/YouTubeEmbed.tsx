@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useImperativeHandle, forwardRef, useCallback 
 
 interface YouTubeEmbedProps {
   videoUrl: string;
+  initialStartTime?: number;
   onPause?: (currentTime: number) => void;
   onTimeUpdate?: (currentTime: number) => void;
 }
@@ -52,7 +53,7 @@ function onAPIReady(cb: () => void) {
 }
 
 export const YouTubeEmbed = forwardRef<YouTubePlayerHandle, YouTubeEmbedProps>(
-  ({ videoUrl, onPause, onTimeUpdate }, ref) => {
+  ({ videoUrl, initialStartTime = 0, onPause, onTimeUpdate }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const playerRef = useRef<any>(null);
     const timerRef = useRef<any>(null);
@@ -104,7 +105,8 @@ export const YouTubeEmbed = forwardRef<YouTubePlayerHandle, YouTubeEmbedProps>(
     }));
 
     useEffect(() => {
-      // Create a unique div id for this player instance
+      let isMounted = true;
+      const startSeconds = Math.max(0, Math.floor(initialStartTime || 0));
       const divId = `yt-player-${videoId}-${Date.now()}`;
       const el = document.createElement('div');
       el.id = divId;
@@ -114,63 +116,86 @@ export const YouTubeEmbed = forwardRef<YouTubePlayerHandle, YouTubeEmbedProps>(
       }
 
       onAPIReady(() => {
-        if (!containerRef.current) return;
-        playerRef.current = new window.YT.Player(divId, {
-          videoId,
-          width: '100%',
-          height: '100%',
-          playerVars: {
-            rel: 0,
-            modestbranding: 1,
-            enablejsapi: 1,
-          },
-          events: {
-            onStateChange: (event: any) => {
-              // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
-              if (event.data === 1) {
-                if (timerRef.current) clearInterval(timerRef.current);
-                timerRef.current = setInterval(() => {
-                  if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
-                    try {
-                      const t = playerRef.current.getCurrentTime() || 0;
-                      onTimeUpdateRef.current?.(t);
-                    } catch { /* ignore */ }
+        if (!isMounted || !containerRef.current) return;
+        try {
+          playerRef.current = new window.YT.Player(divId, {
+            videoId,
+            width: '100%',
+            height: '100%',
+            playerVars: {
+              rel: 0,
+              modestbranding: 1,
+              enablejsapi: 1,
+              start: startSeconds > 0 ? startSeconds : undefined,
+            },
+            events: {
+              onReady: (event: any) => {
+                if (!isMounted) return;
+                if (startSeconds > 0) {
+                  try {
+                    event.target.seekTo(startSeconds, true);
+                  } catch { /* ignore */ }
+                }
+              },
+              onStateChange: (event: any) => {
+                if (!isMounted) return;
+                // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
+                if (event.data === 1) {
+                  if (timerRef.current) clearInterval(timerRef.current);
+                  timerRef.current = setInterval(() => {
+                    if (!isMounted) return;
+                    if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+                      try {
+                        const t = playerRef.current.getCurrentTime() || 0;
+                        onTimeUpdateRef.current?.(t);
+                      } catch { /* ignore */ }
+                    }
+                  }, 500);
+                } else {
+                  if (timerRef.current) {
+                    clearInterval(timerRef.current);
+                    timerRef.current = null;
                   }
-                }, 500);
-              } else {
-                if (timerRef.current) {
-                  clearInterval(timerRef.current);
-                  timerRef.current = null;
+                }
+
+                if (event.data === 2 || event.data === 0) {
+                  try {
+                    const t = playerRef.current?.getCurrentTime() || 0;
+                    if (isMounted) {
+                      onPauseRef.current?.(t);
+                      onTimeUpdateRef.current?.(t);
+                    }
+                  } catch { /* ignore */ }
                 }
               }
-
-              if (event.data === 2 || event.data === 0) {
-                try {
-                  const t = playerRef.current?.getCurrentTime() || 0;
-                  onPauseRef.current?.(t);
-                  onTimeUpdateRef.current?.(t);
-                } catch { /* ignore */ }
-              }
             }
-          }
-        });
+          });
+        } catch (err) {
+          console.warn('YouTube Player initialization caught error:', err);
+        }
       });
 
       return () => {
+        isMounted = false;
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
         }
-        try { playerRef.current?.destroy(); } catch { /* ignore */ }
-        playerRef.current = null;
+        if (playerRef.current) {
+          try {
+            if (typeof playerRef.current.stopVideo === 'function') {
+              playerRef.current.stopVideo();
+            }
+          } catch { /* ignore */ }
+          playerRef.current = null;
+        }
       };
     }, [videoId]);
 
     return (
       <div
         ref={containerRef}
-        className="relative w-full mb-8 rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-200/80"
-        style={{ aspectRatio: '16 / 9', minHeight: '480px' }}
+        className="relative w-full rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-200/80 aspect-video bg-black"
       />
     );
   }

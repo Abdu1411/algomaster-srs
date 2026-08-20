@@ -173,7 +173,13 @@ export function StudioView({
         {/* Selected Tab Generator Component */}
         <div className="animate-fadeIn">
           {creationTab === 'ai' && (
-            <AICardGenerator onDeckGenerated={(deck) => onAddDeck(deck)} />
+            <AICardGenerator
+              onDeckGenerated={(deck) => onAddDeck(deck)}
+              onLessonGenerated={(lesson) => {
+                onAddLesson(lesson);
+                navigate(`/lesson/${lesson.id}`);
+              }}
+            />
           )}
           {creationTab === 'lesson' && (
             <LessonGenerator

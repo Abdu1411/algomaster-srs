@@ -87,7 +87,7 @@ export function Sidebar({
     },
     {
       id: 'lessons' as const,
-      label: 'Lecture Notes',
+      label: 'Notes & PDFs',
       icon: BookOpen,
       badge: safeLessons.length,
       color: 'text-emerald-600',
@@ -195,6 +195,31 @@ export function Sidebar({
           })}
         </div>
 
+        {/* Universal Deck Quick Access */}
+        <div className="px-3 pt-1">
+          <Link
+            to="/deck/universal"
+            onClick={onCloseMobile}
+            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs transition-all cursor-pointer border text-slate-600 hover:text-purple-700 hover:bg-purple-50/80 border-transparent font-semibold group"
+          >
+            <div className="flex items-center gap-2.5">
+              <BrainCircuit className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
+              <span>Universal Deck</span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {totalDue > 0 && (
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-200/80">
+                  {totalDue} due
+                </span>
+              )}
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200/60 group-hover:bg-purple-100 group-hover:text-purple-700 group-hover:border-purple-200">
+                {safeDecks.reduce((acc, d) => acc + (d?.cards?.length || 0), 0)}
+              </span>
+            </div>
+          </Link>
+        </div>
+
         {/* Folders List Quick Access */}
         <div className="px-3 pt-2">
           <div className="flex items-center justify-between px-3 pb-2">
@@ -259,13 +284,13 @@ export function Sidebar({
             </span>
           </div>
 
-          {totalDue > 0 && topDueDeck ? (
+          {totalDue > 0 ? (
             <Link
-              to={`/deck/${topDueDeck.id}`}
-              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+              to="/deck/universal"
+              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer"
             >
               <Play className="w-3 h-3 fill-current" />
-              Study Due Cards
+              Study All Due Cards ({totalDue})
             </Link>
           ) : (
             <div className="text-[11px] text-blue-800 font-medium flex items-center gap-1.5">

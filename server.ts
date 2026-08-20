@@ -16,17 +16,42 @@ const port = process.env.PORT || 3000;
 const app = express();
 app.use(express.json());
 
+import fs from 'fs';
+import { PDFParse } from 'pdf-parse';
+
+// Ensure public/uploads directory exists
+const uploadsDir = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Multer storage with original extension preservation
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '';
+    const cleanName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, `${cleanName}-${uniqueSuffix}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-// Serve uploaded media files
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+// Serve uploaded media & PDF files
+app.use('/uploads', express.static(uploadsDir));
 
 // Media upload endpoint
-const upload = multer({ dest: path.join(__dirname, 'public', 'uploads') });
-
 app.post('/api/media/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
@@ -34,6 +59,54 @@ app.post('/api/media/upload', upload.single('file'), async (req, res) => {
   const file = req.file;
   const publicUrl = `/uploads/${file.filename}`;
   res.json({ url: publicUrl, filename: file.originalname });
+});
+
+// PDF Import & Parse endpoint
+app.post('/api/pdf/parse', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No PDF file uploaded' });
+    }
+
+    const filePath = req.file.path;
+    const publicUrl = `/uploads/${req.file.filename}`;
+    let text = '';
+    let numPages = 1;
+
+    try {
+      const dataBuffer = fs.readFileSync(filePath);
+      if (typeof PDFParse === 'function') {
+        const parser = new PDFParse({ data: dataBuffer });
+        try {
+          const textResult = await parser.getText();
+          if (textResult) {
+            text = textResult.text || '';
+            numPages = (textResult as any).total || (textResult.pages ? textResult.pages.length : 1);
+          }
+        } finally {
+          if (parser && typeof (parser as any).destroy === 'function') {
+            await (parser as any).destroy();
+          }
+        }
+      }
+    } catch (parseErr) {
+      console.warn('PDF text extraction notice (falling back, file stored safely):', parseErr);
+    }
+
+    // Clean up text
+    const cleanText = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+
+    res.json({
+      url: publicUrl,
+      filename: req.file.originalname,
+      pages: numPages || 1,
+      text: cleanText.slice(0, 50000),
+      preview: cleanText.slice(0, 800)
+    });
+  } catch (error: any) {
+    console.error('Error processing PDF:', error);
+    res.status(500).json({ error: error.message || 'Failed to process PDF' });
+  }
 });
 
 
@@ -57,8 +130,100 @@ const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 console.log(`🔧 DeepSeek configured: baseURL=${DEEPSEEK_BASE_URL}, model=${DEEPSEEK_MODEL}`);
 // -------------------------------------------------------------
 
+function getYouTubeVideoId(urlStr: string): string | null {
+  try {
+    const url = new URL(urlStr);
+    if (url.hostname.includes('youtube.com')) {
+      return url.searchParams.get('v');
+    }
+    if (url.hostname.includes('youtu.be')) {
+      return url.pathname.slice(1).split('?')[0];
+    }
+  } catch {}
+  return null;
+}
+
+async function extractYouTubeTranscript(videoId: string): Promise<string | null> {
+  try {
+    const videoPageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    });
+    if (!videoPageRes.ok) return null;
+    const html = await videoPageRes.text();
+    
+    // Look for captionTracks in ytInitialPlayerResponse
+    const playerResponseMatch = html.match(/ytInitialPlayerResponse\s*=\s*({.+?});(?:var\s+meta|<\/script|\n)/s);
+    if (!playerResponseMatch) return null;
+    
+    const playerResponse = JSON.parse(playerResponseMatch[1]);
+    const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (!captionTracks || !captionTracks.length) return null;
+    
+    // Prioritize English caption track or fallback to first available
+    const enTrack = captionTracks.find((t: any) => t.languageCode === 'en' || t.vssId?.includes('.en')) || captionTracks[0];
+    if (!enTrack?.baseUrl) return null;
+    
+    const transcriptRes = await fetch(enTrack.baseUrl);
+    if (!transcriptRes.ok) return null;
+    const transcriptXml = await transcriptRes.text();
+    
+    // Parse XML transcript <text ...>content</text>
+    const $ = cheerio.load(transcriptXml, { xmlMode: true });
+    const lines: string[] = [];
+    $('text').each((_, el) => {
+      const text = $(el).text().trim();
+      if (text) {
+        // Decode HTML entities
+        const decoded = cheerio.load(text).text();
+        lines.push(decoded);
+      }
+    });
+    
+    if (lines.length > 0) {
+      const title = playerResponse?.videoDetails?.title || 'YouTube Video Lecture';
+      return `[YouTube Video: ${title}]\n\nTranscript:\n${lines.join(' ')}`;
+    }
+  } catch (err) {
+    console.warn('YouTube transcript extraction failed, falling back to standard page fetch:', err);
+  }
+  return null;
+}
+
 async function extractTextFromUrl(url: string) {
   try {
+    // 1. Check if local PDF upload
+    if (url.startsWith('/uploads/') || url.toLowerCase().includes('.pdf')) {
+      const filename = path.basename(url.split('?')[0]);
+      const localPath = path.join(uploadsDir, filename);
+      if (fs.existsSync(localPath)) {
+        const dataBuffer = fs.readFileSync(localPath);
+        if (typeof PDFParse === 'function') {
+          const parser = new PDFParse({ data: dataBuffer });
+          try {
+            const res = await parser.getText();
+            if (res && res.text && res.text.trim()) {
+              return `[PDF Document: ${filename}]\n\n${res.text.trim().slice(0, 40000)}`;
+            }
+          } finally {
+            if (parser && typeof (parser as any).destroy === 'function') {
+              await (parser as any).destroy();
+            }
+          }
+        }
+      }
+    }
+
+    const ytId = getYouTubeVideoId(url);
+    if (ytId) {
+      const ytTranscript = await extractYouTubeTranscript(ytId);
+      if (ytTranscript && ytTranscript.trim().length > 100) {
+        return ytTranscript.slice(0, 40000);
+      }
+    }
+
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
