@@ -236,8 +236,8 @@ app.post('/api/generate-deck', async (req, res) => {
     }
 
     const isClippedVideo = (startTime !== undefined && endTime !== undefined);
-    // For a 1-minute video clip, strict max is 3 cards
-    const targetCardCount = count ? Number(count) : (isClippedVideo ? 3 : 20);
+    // Standard decks guarantee all 9 archetypes + 2 implementations (min 10 cards)
+    const targetCardCount = count ? Math.max(10, Number(count)) : (isClippedVideo ? 3 : 15);
 
     const effectiveTopic = (topic && topic.trim())
       ? topic.trim()
@@ -312,17 +312,22 @@ app.post('/api/generate-deck', async (req, res) => {
       - When asking about anything related to code (e.g. analyzing time/space complexity of a function, tracing execution, finding a bug, loop invariants, or explaining how an algorithm works), you MUST provide the relevant Dart code snippet directly in the "front" (question) field within a formatted \`\`\`dart ... \`\`\` code block.
       - Ensure the code provided in the question gives the necessary context for the question WITHOUT revealing or giving away the core answer/solution that the student needs to provide.
       
-      MANDATORY DIVERSE ARCHETYPE DISTRIBUTION:
-      You MUST generate a well-balanced deck containing diverse archetypes (NOT all "Concept"):
-      - "Concept" (2-3 cards): Core intuition, definitions & theoretical foundation.
-      - "Complexity" (2-3 cards): Time & Space Big-O analysis with LaTeX math ($O(N \\log N)$, etc.).
-      - "Pattern" (2-3 cards): Algorithmic pattern recognition (Sliding Window, Two Pointers, DFS/BFS, Monotonic Queue, etc.).
-      - "Cloze" (2-3 cards): Fill-in-the-blank blanks using {{c1::answer}} notation.
-      - "Implementation" (2-3 cards): Focused coding challenge asking the student to write a Dart function/class.
-      - "Comparison" (1-2 cards): Comparing two algorithms or data structures.
-      - "Invariant" (1-2 cards): Loop invariant or correctness proof.
-      - "Debugging" (1-2 cards): Spotting a bug or Dart null-safety pitfall.
-      - "Trace" (1-2 cards): Step-by-step state simulation or dry run.
+      MANDATORY ARCHETYPE DISTRIBUTION QUOTA (CRITICAL REQUIREMENT):
+      You MUST generate a deck containing ALL 9 ARCHETYPES with the following strict minimums:
+      1. 'Implementation' (AT LEAST 2 CARDS): Interactive Dart 3.x coding challenges asking the student to write or complete code.
+      2. 'Concept' (AT LEAST 1 CARD): Core theoretical intuition, definitions & "Why".
+      3. 'Complexity' (AT LEAST 1 CARD): Time & Space Big-O analysis with LaTeX math ($O(N \\log N)$, etc.).
+      4. 'Pattern' (AT LEAST 1 CARD): Algorithmic pattern recognition (Sliding Window, Two Pointers, DFS/BFS, Monotonic Stack, etc.).
+      5. 'Cloze' (AT LEAST 1 CARD): Fill-in-the-blank active recall using {{c1::answer}} notation in the question.
+      6. 'Comparison' (AT LEAST 1 CARD): Head-to-head comparison between two algorithms or data structures.
+      7. 'Trace' (AT LEAST 1 CARD): Step-by-step execution simulation or dry run.
+      8. 'Invariant' (AT LEAST 1 CARD): Loop invariant, correctness proof, or boundary condition.
+      9. 'Debugging' (AT LEAST 1 CARD): Spotting a bug trap or Dart null-safety pitfall.
+      
+      CRITICAL:
+      - Every single card MUST have its "type" property explicitly set to one of the 9 archetypes above.
+      - There MUST be at least 2 'Implementation' cards and at least 1 card of each of the other 8 archetypes.
+      - NEVER return cards with only 'Concept' or only 'Implementation'.
       
       OUTPUT JSON SCHEMA:
       Respond ONLY with a valid JSON object matching this schema:
