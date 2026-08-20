@@ -411,14 +411,14 @@ app.post('/api/generate-deck', async (req, res) => {
 
     const effectiveTopic = (topic && topic.trim())
       ? topic.trim()
-      : (allUrls[0] ? `Algorithms & Data Structures from ${allUrls[0]}` : 'Dart Data Structures and Algorithms Mastery');
+      : (allUrls[0] ? `Computer Science & Algorithms from ${allUrls[0]}` : 'Computer Science Mastery');
 
     let systemPrompt = '';
     let userPrompt = '';
 
     if (isClippedVideo) {
       // Specialized LLM prompt for live lecture timestamp clipping with LaTeX math & Markdown
-      systemPrompt = 'You are an elite Computer Science Professor specializing in algorithms, data structures, and Dart 3.x. You synthesize precise, high-yield spaced repetition flashcards from specific video lecture segments with full Markdown and LaTeX math support.';
+      systemPrompt = 'You are an elite Computer Science Professor. You synthesize precise, high-yield spaced repetition flashcards from specific video lecture segments with full Markdown and LaTeX math support.';
 
       userPrompt = `
       You are analyzing a targeted segment of a live computer science lecture video:
@@ -426,7 +426,7 @@ app.post('/api/generate-deck', async (req, res) => {
       - Topic: ${effectiveTopic}
       
       TASK:
-      Synthesize EXACTLY ${targetCardCount} high-yield, conceptual flashcards covering the EXACT concepts, invariants, and Dart 3.x implementations taught in this specific ${startTime} - ${endTime} segment. (For a 1-minute clip, you must not exceed 3 cards).
+      Synthesize EXACTLY ${targetCardCount} high-yield, conceptual flashcards covering the EXACT concepts, invariants, and implementation details taught in this specific ${startTime} - ${endTime} segment. (For a 1-minute clip, you must not exceed 3 cards).
       
       MANDATORY FORMATTING & NOTATION REQUIREMENTS:
       1. MATH NOTATION (LaTeX):
@@ -434,20 +434,20 @@ app.post('/api/generate-deck', async (req, res) => {
          - Inline math: use single dollar signs, e.g. $O(N \\log N)$, $\\mathcal{O}(1)$, $T(n) = 2T(n/2) + O(n)$, $\\lfloor \\frac{n}{2} \\rfloor$.
          - Block math: use double dollar signs, e.g. $$ \\sum_{i=1}^n i = \\frac{n(n+1)}{2} $$.
       
-      2. RICH MARKDOWN & DART CODE:
+      2. RICH MARKDOWN & CODE:
          - Use clean Markdown styling with bolding, lists, headers, and inline code (\`...\`).
-         - All code MUST be 100% valid, idiomatic Dart 3.x inside \`\`\`dart ... \`\`\` blocks with sound null safety.
+         - All code MUST be valid, idiomatic, and robust inside appropriate \`\`\`language ... \`\`\` blocks.
       
       3. CRITICAL CODE-IN-QUESTION INCLUSION RULE:
-         - When asking about anything related to code (e.g. tracing execution, identifying bugs, finding Big-O complexity, loop invariants, or method behavior), you MUST include the relevant Dart code directly in the "front" (question) field inside a formatted \`\`\`dart ... \`\`\` block.
+         - When asking about anything related to code (e.g. tracing execution, identifying bugs, finding Big-O complexity, loop invariants, or method behavior), you MUST include the relevant code directly in the "front" (question) field inside a formatted \`\`\`language ... \`\`\` block.
          - The code provided in the question must provide the context to reason about WITHOUT giving away the answer/solution being tested.
       
       4. APPROPRIATE CARD TYPES (Choose the best ${targetCardCount} archetypes for this segment):
          - 'Concept': Deep conceptual intuition and "Why".
          - 'Complexity': Precise Time & Space complexity using LaTeX math ($O(...)$).
-         - 'Pattern': Problem recognition and when to apply this technique in Dart.
+         - 'Pattern': Problem recognition and when to apply this technique.
          - 'Cloze': Anki cloze deletion with math/code syntax: {{c1::$O(\\log N)$}} or {{c1::list.sublist(mid)}}.
-         - 'Implementation': Focused Dart coding challenge testing the core logic from this segment.
+         - 'Implementation': Focused coding challenge testing the core logic from this segment.
          - 'Invariant': Loop invariant, correctness proof, or boundary condition.
       
       OUTPUT FORMAT:
@@ -458,7 +458,7 @@ app.post('/api/generate-deck', async (req, res) => {
             "type": "Concept" | "Complexity" | "Pattern" | "Cloze" | "Comparison" | "Trace" | "Invariant" | "Debugging" | "Implementation",
             "front": "Markdown and LaTeX question",
             "back": "Detailed Markdown and LaTeX answer",
-            "codeSnippet": "Optional Dart code snippet"
+            "codeSnippet": "Optional code snippet"
           }
         ]
       }
@@ -468,23 +468,23 @@ app.post('/api/generate-deck', async (req, res) => {
       `;
     } else {
       // Standard comprehensive deck generation prompt
-      systemPrompt = 'You are an expert algorithm and data structures instructor specializing in Dart 3.x. Respond ONLY with a valid JSON object containing a "cards" array.';
+      systemPrompt = 'You are an expert computer science instructor. Respond ONLY with a valid JSON object containing a "cards" array.';
 
       userPrompt = `
-      You are an expert algorithm and data structures instructor specializing in the Dart programming language (Dart 3.x).
+      You are an expert Computer Science instructor.
       Your mission is to read and analyze the provided topic and/or content from a web document / article URL and convert it into a comprehensive deck of ${targetCardCount} Anki-style spaced repetition flashcards.
       
-      CRITICAL UNIVERSAL CONVERSION RULE - 100% DART CODE:
-      - Translate all code 100% into clean, idiomatic, modern Dart 3.x (with sound null safety, strong typing).
+      CRITICAL UNIVERSAL CONVERSION RULE - IDIOMATIC CODE:
+      - Translate any implementation details into clean, idiomatic, modern code.
       - Use LaTeX math notation ($O(N \\log N)$, etc.) for all complexity bounds.
       
       CRITICAL CODE-IN-QUESTION INCLUSION RULE:
-      - When asking about anything related to code (e.g. analyzing time/space complexity of a function, tracing execution, finding a bug, loop invariants, or explaining how an algorithm works), you MUST provide the relevant Dart code snippet directly in the "front" (question) field within a formatted \`\`\`dart ... \`\`\` code block.
+      - When asking about anything related to code (e.g. analyzing time/space complexity of a function, tracing execution, finding a bug, loop invariants, or explaining how an algorithm works), you MUST provide the relevant code snippet directly in the "front" (question) field within a formatted \`\`\`language ... \`\`\` code block.
       - Ensure the code provided in the question gives the necessary context for the question WITHOUT revealing or giving away the core answer/solution that the student needs to provide.
       
       MANDATORY ARCHETYPE DISTRIBUTION QUOTA (CRITICAL REQUIREMENT):
       You MUST generate a deck containing ALL 9 ARCHETYPES with the following strict minimums:
-      1. 'Implementation' (AT LEAST 2 CARDS): Interactive Dart 3.x coding challenges asking the student to write or complete code.
+      1. 'Implementation' (AT LEAST 2 CARDS): Interactive coding challenges asking the student to write or complete code.
       2. 'Concept' (AT LEAST 1 CARD): Core theoretical intuition, definitions & "Why".
       3. 'Complexity' (AT LEAST 1 CARD): Time & Space Big-O analysis with LaTeX math ($O(N \\log N)$, etc.).
       4. 'Pattern' (AT LEAST 1 CARD): Algorithmic pattern recognition (Sliding Window, Two Pointers, DFS/BFS, Monotonic Stack, etc.).
@@ -492,7 +492,7 @@ app.post('/api/generate-deck', async (req, res) => {
       6. 'Comparison' (AT LEAST 1 CARD): Head-to-head comparison between two algorithms or data structures.
       7. 'Trace' (AT LEAST 1 CARD): Step-by-step execution simulation or dry run.
       8. 'Invariant' (AT LEAST 1 CARD): Loop invariant, correctness proof, or boundary condition.
-      9. 'Debugging' (AT LEAST 1 CARD): Spotting a bug trap or Dart null-safety pitfall.
+      9. 'Debugging' (AT LEAST 1 CARD): Spotting a bug trap or logical pitfall.
       
       CRITICAL:
       - Every single card MUST have its "type" property explicitly set to one of the 9 archetypes above.
@@ -507,7 +507,7 @@ app.post('/api/generate-deck', async (req, res) => {
             "type": "Concept" | "Complexity" | "Pattern" | "Cloze" | "Comparison" | "Trace" | "Invariant" | "Debugging" | "Implementation",
             "front": "Markdown and LaTeX question",
             "back": "Detailed Markdown and LaTeX answer",
-            "codeSnippet": "Optional Dart code snippet"
+            "codeSnippet": "Optional code snippet"
           }
         ]
       }

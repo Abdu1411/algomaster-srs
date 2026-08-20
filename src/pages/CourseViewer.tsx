@@ -3,15 +3,22 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, PlayCircle, FileText, Book, Sparkles, CheckCircle2, ChevronRight, Video, FileCode } from 'lucide-react';
 import { useDecks } from '../store';
 import { Course, CourseModule, CourseItem } from '../types';
+import { useActiveView } from '../context/ActiveViewContext';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 export function CourseViewer() {
   const { courseId } = useParams<{ courseId: string }>();
   const { courses } = useDecks();
+  const { setActiveResource } = useActiveView();
   const course = courses.find((c) => c.id === courseId);
 
   const [activeItem, setActiveItem] = useState<CourseItem | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
+  const [sourceText, setSourceText] = useState<string>('');
   const [htmlVideoLinks, setHtmlVideoLinks] = useState<{url: string, label: string}[]>([]);
   const [error, setError] = useState<string | null>(null);
   
@@ -27,9 +34,12 @@ export function CourseViewer() {
     if (!activeItem || !course?.directoryHandle || !activeItem.path) return;
 
     let objectUrl: string | null = null;
+    let extractedText = '';
     setError(null);
     setMediaUrl(null);
     setHtmlContent(null);
+    setSourceText('');
+    setActiveResource(null);
 
     const loadContent = async () => {
       try {
@@ -89,15 +99,80 @@ export function CourseViewer() {
           const videoBlob = new Blob([await file.arrayBuffer()], { type: 'video/mp4' });
           objectUrl = URL.createObjectURL(videoBlob);
           setMediaUrl(objectUrl);
+          
+          extractedText = activeItem.description || `Video Lecture: ${activeItem.title}`;
+          setActiveResource({
+            title: activeItem.title,
+            type: 'lesson',
+            contextText: extractedText,
+            suggestedPrompts: [
+              'Summarize the key points of this lecture',
+              'Generate a study plan based on this lecture',
+              'Explain the core concepts mentioned in this topic'
+            ]
+          });
+          setSourceText(extractedText);
         } else if (activeItem.type === 'pdf') {
+          const arrayBuffer = await file.arrayBuffer();
           // Explicitly set the MIME type to application/pdf so the browser renders it inline
           // instead of downloading it or failing to load the blob.
-          const pdfBlob = new Blob([await file.arrayBuffer()], { type: 'application/pdf' });
+          const pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' });
           objectUrl = URL.createObjectURL(pdfBlob);
           setMediaUrl(objectUrl);
+
+          // Extract text from PDF in the background
+          try {
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+            // Only extract first 30 pages to prevent freezing on massive textbooks
+            const numPages = Math.min(pdf.numPages, 30);
+            for (let i = 1; i <= numPages; i++) {
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              const pageText = content.items.map((item: any) => item.str).join(' ');
+              fullText += pageText + '\n\n';
+            }
+            extractedText = fullText;
+            setActiveResource({
+              title: activeItem.title,
+              type: 'lesson',
+              contextText: extractedText,
+              suggestedPrompts: [
+                'Summarize the main concepts in this PDF',
+                'Extract the key formulas or algorithms mentioned',
+                'Create flashcard questions for this material'
+              ]
+            });
+            setSourceText(extractedText);
+          } catch (e) {
+            console.error('Failed to extract PDF text:', e);
+            setActiveResource({
+              title: activeItem.title,
+              type: 'lesson',
+              contextText: activeItem.description || `PDF: ${activeItem.title}`
+            });
+          }
+
         } else if (activeItem.type === 'html') {
           const text = await file.text();
           setHtmlContent(text);
+          
+          // Strip HTML tags for clean AI context
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = text;
+          extractedText = tempDiv.textContent || tempDiv.innerText || '';
+          
+          setActiveResource({
+            title: activeItem.title,
+            type: 'lesson',
+            contextText: extractedText,
+            suggestedPrompts: [
+              'Summarize these lecture notes',
+              'Explain this topic to me like I am 5',
+              'What are the main takeaways from these notes?'
+            ]
+          });
+          setSourceText(extractedText);
           
           // Parse HTML for video links to display as prominent buttons
           try {
@@ -218,6 +293,7 @@ export function CourseViewer() {
           {activeItem && (
             <Link
               to={`/?tab=deck-generator&topic=${encodeURIComponent(activeItem.title)}`}
+              state={{ sourceText, courseName: course.title }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md cursor-pointer shrink-0"
             >
               <Sparkles className="w-4 h-4" />

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Plus,
   Link2,
@@ -25,15 +25,30 @@ interface AICardGeneratorProps {
 
 export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGeneratorProps) {
   const navigate = useNavigate();
-  const { folders, addLesson } = useDecks();
+  const { folders, addLesson, addFolder } = useDecks();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const state = location.state as { sourceText?: string; courseName?: string } | null;
   const [urls, setUrls] = useState<string[]>(['']);
   const [topic, setTopic] = useState(searchParams.get('topic') || '');
-  const [rawText, setRawText] = useState('');
-  const [showRawTextInput, setShowRawTextInput] = useState(false);
+  const [rawText, setRawText] = useState(state?.sourceText || '');
+  const [showRawTextInput, setShowRawTextInput] = useState(!!state?.sourceText);
   const [isGeneratingDeck, setIsGeneratingDeck] = useState(false);
   const [isGeneratingLesson, setIsGeneratingLesson] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string>('');
+
+  const AUTO_CREATE_FOLDER_ID = 'auto-create-course-folder';
+
+  useEffect(() => {
+    if (state?.courseName) {
+      const existing = folders.find(f => f.name === state.courseName);
+      if (existing) {
+        setSelectedFolderId(existing.id);
+      } else if (!selectedFolderId) {
+        setSelectedFolderId(AUTO_CREATE_FOLDER_ID);
+      }
+    }
+  }, [state?.courseName, folders, selectedFolderId]);
 
   const handleAddUrl = () => {
     setUrls(prev => [...prev, '']);
@@ -96,7 +111,7 @@ export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGe
       
       const now = Date.now();
 
-      let defaultTitle = 'New Dart Deck';
+      let defaultTitle = 'New CS Deck';
       if (topic.trim()) {
         defaultTitle = topic.trim();
       } else if (validUrls[0]) {
@@ -107,10 +122,16 @@ export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGe
         }
       }
 
+      let finalFolderId = selectedFolderId;
+      if (finalFolderId === AUTO_CREATE_FOLDER_ID && state?.courseName) {
+        const newFolder = await addFolder(state.courseName);
+        finalFolderId = newFolder.id;
+      }
+
       const newDeck: Deck = {
         id: crypto.randomUUID(),
         title: defaultTitle,
-        folderId: selectedFolderId || undefined,
+        folderId: finalFolderId || undefined,
         createdAt: now,
         cards: generatedCards.map((c: any) => ({
           ...c,
@@ -178,6 +199,12 @@ export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGe
         ? data.sources
         : validUrls;
 
+      let finalFolderId = selectedFolderId;
+      if (finalFolderId === AUTO_CREATE_FOLDER_ID && state?.courseName) {
+        const newFolder = await addFolder(state.courseName);
+        finalFolderId = newFolder.id;
+      }
+
       const newLesson: Lesson = {
         id: crypto.randomUUID(),
         title: data.title,
@@ -185,7 +212,7 @@ export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGe
         sourceUrl: validUrls[0] || undefined,
         sources: sourcesList.length > 0 ? sourcesList : undefined,
         content: data.content,
-        folderId: selectedFolderId || undefined,
+        folderId: finalFolderId || undefined,
         createdAt: Date.now()
       };
 
@@ -234,7 +261,7 @@ export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGe
         <form onSubmit={handleGenerateDeck} className="space-y-4">
           <div className="relative">
             <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1.5">
-              Dart Topic or Algorithm Title
+              Computer Science Topic or Algorithm Title
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
@@ -242,7 +269,7 @@ export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGe
               </div>
               <input
                 type="text"
-                placeholder="e.g. Binary Search Trees, Graph BFS, Dart Concurrency & Isolates"
+                placeholder="e.g. Binary Search Trees, Graph BFS, Operating Systems"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800 placeholder-slate-400 font-sans text-xs"
@@ -337,6 +364,9 @@ export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGe
                 className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-sans text-xs focus:bg-white focus:border-blue-500 focus:outline-none transition-all cursor-pointer"
               >
                 <option value="">📁 Unfiled (No Folder)</option>
+                {state?.courseName && !folders.find(f => f.name === state.courseName) && (
+                  <option value={AUTO_CREATE_FOLDER_ID}>📁 {state.courseName} (Auto-create)</option>
+                )}
                 {folders.map(f => (
                   <option key={f.id} value={f.id}>
                     📁 {f.name}
@@ -384,7 +414,7 @@ export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGe
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  Synthesize 30 Dart Cards
+                  Synthesize 30 Cards
                 </>
               )}
             </button>

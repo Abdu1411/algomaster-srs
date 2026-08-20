@@ -34,7 +34,7 @@ export function DeckGeneratorView({
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-blue-600" />
-              AI Dart Deck Synthesizer
+              AI Deck Synthesizer
             </h1>
             <p className="text-xs text-slate-500 font-sans mt-0.5">
               Synthesize 30-card spaced repetition decks with AI from multiple documentation sources, or forge cards manually

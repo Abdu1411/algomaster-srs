@@ -31,6 +31,7 @@
     "node-llama-cpp": "^3.20.0",
     "openai": "^7.5.0",
     "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^6.2.108",
     "prismjs": "^1.30.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
