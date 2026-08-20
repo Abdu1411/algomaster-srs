@@ -96,7 +96,7 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
       });
     }
     return () => setActiveResource(null);
-  }, [currentCard, currentDeck, showAnswer, code, setActiveResource]);
+  }, [currentCard, currentDeck?.title, showAnswer, code, setActiveResource]);
 
   // Evaluation state
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -282,14 +282,13 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
           </div>
 
           <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={() => navigate('/')}
+            <Link
+              to="/"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50/80 border border-slate-200/60 shadow-2xs transition-all cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4 text-slate-500" />
               <span>Back to Workspace</span>
-            </button>
+            </Link>
           </div>
         </div>
 

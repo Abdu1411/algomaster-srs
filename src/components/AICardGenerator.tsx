@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Link2,
@@ -26,8 +26,9 @@ interface AICardGeneratorProps {
 export function AICardGenerator({ onDeckGenerated, onLessonGenerated }: AICardGeneratorProps) {
   const navigate = useNavigate();
   const { folders, addLesson } = useDecks();
+  const [searchParams] = useSearchParams();
   const [urls, setUrls] = useState<string[]>(['']);
-  const [topic, setTopic] = useState('');
+  const [topic, setTopic] = useState(searchParams.get('topic') || '');
   const [rawText, setRawText] = useState('');
   const [showRawTextInput, setShowRawTextInput] = useState(false);
   const [isGeneratingDeck, setIsGeneratingDeck] = useState(false);

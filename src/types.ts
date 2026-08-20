@@ -77,3 +77,32 @@ export type MediaItem = {
   url: string;
   caption?: string;
 };
+
+// --- Course Export Types ---
+export interface CourseItem {
+  id: string;
+  title: string;
+  type: 'video' | 'pdf' | 'html' | 'resource' | 'unknown';
+  fileKey?: string; // The UUID in content_map.json
+  path?: string; // The relative path in the local directory
+  description?: string;
+  isCompleted?: boolean;
+}
+
+export interface CourseModule {
+  id: string;
+  title: string;
+  items: CourseItem[];
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  description: string;
+  instructors: string[];
+  coverImageUrl?: string; // We can use an object URL or local path
+  modules: CourseModule[];
+  directoryHandle?: any; // FileSystemDirectoryHandle (any to avoid TS dom lib errors if not configured)
+  createdAt: number;
+  lastAccessed?: number;
+}

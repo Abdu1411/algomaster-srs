@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Deck, Card, Folder, Lesson } from './types';
+import { Deck, Card, Folder, Lesson, Course } from './types';
 
 export interface ReviewLog {
   id?: number;
@@ -15,6 +15,7 @@ class AlgoDatabase extends Dexie {
   reviews!: Table<ReviewLog, number>;
   folders!: Table<Folder, string>;
   lessons!: Table<Lesson, string>;
+  courses!: Table<Course, string>;
 
   constructor() {
     super('AlgoMasterDB');
@@ -37,21 +38,32 @@ class AlgoDatabase extends Dexie {
       folders: 'id, name, createdAt',
       lessons: 'id, title, folderId, createdAt'
     });
+    this.version(5).stores({
+      decks: 'id, title, folderId, createdAt',
+      reviews: '++id, deckId, cardId, timestamp',
+      folders: 'id, name, createdAt',
+      lessons: 'id, title, folderId, createdAt',
+      courses: 'id, title, createdAt'
+    });
   }
 }
 
 export const db = new AlgoDatabase();
 
-export function useDecks() {
-  const rawDecks = useLiveQuery(() => db.decks.toArray(), [], []) || [];
-  const rawFolders = useLiveQuery(() => db.folders.toArray(), [], []) || [];
-  const rawReviews = useLiveQuery(() => db.reviews.toArray(), [], []) || [];
-  const rawLessons = useLiveQuery(() => db.lessons.toArray(), [], []) || [];
+const EMPTY_ARRAY: any[] = [];
 
-  const decks = Array.isArray(rawDecks) ? rawDecks : [];
-  const folders = Array.isArray(rawFolders) ? rawFolders : [];
-  const reviews = Array.isArray(rawReviews) ? rawReviews : [];
-  const lessons = Array.isArray(rawLessons) ? rawLessons : [];
+export function useDecks() {
+  const rawDecks = useLiveQuery(() => db.decks.toArray(), [], EMPTY_ARRAY);
+  const rawFolders = useLiveQuery(() => db.folders.toArray(), [], EMPTY_ARRAY);
+  const rawReviews = useLiveQuery(() => db.reviews.toArray(), [], EMPTY_ARRAY);
+  const rawLessons = useLiveQuery(() => db.lessons.toArray(), [], EMPTY_ARRAY);
+  const rawCourses = useLiveQuery(() => db.courses.toArray(), [], EMPTY_ARRAY);
+
+  const decks = Array.isArray(rawDecks) ? rawDecks : EMPTY_ARRAY;
+  const folders = Array.isArray(rawFolders) ? rawFolders : EMPTY_ARRAY;
+  const reviews = Array.isArray(rawReviews) ? rawReviews : EMPTY_ARRAY;
+  const lessons = Array.isArray(rawLessons) ? rawLessons : EMPTY_ARRAY;
+  const courses = Array.isArray(rawCourses) ? rawCourses : EMPTY_ARRAY;
 
   const addDeck = async (deck: Deck) => {
     await db.decks.add(deck);
@@ -180,6 +192,15 @@ export function useDecks() {
       await db.lessons.put(lesson);
     }
   };
+
+  // Course Operations
+  const addCourse = async (course: Course) => {
+    await db.courses.add(course);
+  };
+
+  const deleteCourse = async (id: string) => {
+    await db.courses.delete(id);
+  };
   
   const logReview = async (deckId: string, cardId: string, grade: string) => {
     await db.reviews.add({
@@ -295,6 +316,7 @@ export function useDecks() {
     decks, 
     folders,
     lessons,
+    courses,
     reviews, 
     addDeck, 
     deleteDeck, 
@@ -312,6 +334,8 @@ export function useDecks() {
     deleteLesson,
     renameLesson,
     moveLessonToFolder,
+    addCourse,
+    deleteCourse,
     logReview, 
     resetAllStats, 
     stats: getStats() 

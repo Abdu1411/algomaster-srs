@@ -30,7 +30,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link
             to="/"
             onClick={(e) => {
-              navigate('/');
+              // Let the Link component handle the navigation
             }}
             className="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-2xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50/80 border border-slate-200/60 shadow-2xs transition-all cursor-pointer group"
           >

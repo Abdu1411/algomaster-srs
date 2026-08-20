@@ -27,6 +27,9 @@ import { LiveLectureModal } from '../components/modals/LiveLectureModal';
 import { CustomStudyModal } from '../components/CustomStudyModal';
 import { DeckCardsModal } from '../components/modals/DeckCardsModal';
 import { ImportPDFModal } from '../components/modals/ImportPDFModal';
+import { ImportCourseModal } from '../components/modals/ImportCourseModal';
+
+const EMPTY_ARRAY: any[] = [];
 
 export function Home() {
   const navigate = useNavigate();
@@ -52,9 +55,9 @@ export function Home() {
     moveLessonToFolder
   } = useDecks();
 
-  const safeDecks = Array.isArray(decks) ? decks : [];
-  const safeFolders = Array.isArray(folders) ? folders : [];
-  const safeLessons = Array.isArray(lessons) ? lessons : [];
+  const safeDecks = Array.isArray(decks) ? decks : EMPTY_ARRAY;
+  const safeFolders = Array.isArray(folders) ? folders : EMPTY_ARRAY;
+  const safeLessons = Array.isArray(lessons) ? lessons : EMPTY_ARRAY;
 
   // Parse view from URL params (with backwards compatibility for ?view=all, ?view=lessons, ?view=live, ?view=folders)
   const tabParam = searchParams.get('tab');
@@ -99,6 +102,7 @@ export function Home() {
   const [deckToBrowseCards, setDeckToBrowseCards] = useState<Deck | null>(null);
   const [isLiveModalOpen, setIsLiveModalOpen] = useState(false);
   const [isImportPDFOpen, setIsImportPDFOpen] = useState(false);
+  const [isImportCourseOpen, setIsImportCourseOpen] = useState(false);
 
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
   const [selectedDeckForCustom, setSelectedDeckForCustom] = useState<string>('all');
@@ -241,6 +245,7 @@ Lecture Notes (${safeLessons.length}): ${safeLessons.map((l) => `"${l.title}" [$
             setIsNewFolderOpen(true);
           }}
           onOpenLiveModal={() => setIsLiveModalOpen(true)}
+          onOpenImportCourse={() => setIsImportCourseOpen(true)}
           onNavigateTab={handleSelectTab}
         />
 
@@ -376,6 +381,11 @@ Lecture Notes (${safeLessons.length}): ${safeLessons.map((l) => `"${l.title}" [$
         onClose={() => setIsImportPDFOpen(false)}
         folders={safeFolders}
         onAddLesson={addLesson}
+      />
+
+      <ImportCourseModal
+        isOpen={isImportCourseOpen}
+        onClose={() => setIsImportCourseOpen(false)}
       />
 
       <CustomStudyModal

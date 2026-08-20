@@ -14,10 +14,12 @@ import {
   ChevronRight,
   Plus,
   Sliders,
-  Folder as FolderIcon
+  Folder as FolderIcon,
+  GraduationCap,
+  Trash2
 } from 'lucide-react';
 import { useDecks } from '../store';
-import { Folder } from '../types';
+import { Folder, Course } from '../types';
 
 export type WorkspaceTab =
   | 'dashboard'
@@ -49,11 +51,12 @@ export function Sidebar({
   isMobileOpen,
   onCloseMobile
 }: SidebarProps) {
-  const { decks, folders, lessons, stats } = useDecks();
+  const { decks, folders, lessons, courses, stats, deleteCourse } = useDecks();
 
   const safeDecks = Array.isArray(decks) ? decks : [];
   const safeFolders = Array.isArray(folders) ? folders : [];
   const safeLessons = Array.isArray(lessons) ? lessons : [];
+  const safeCourses = Array.isArray(courses) ? courses : [];
 
   const totalDue = safeDecks.reduce(
     (acc, d) => acc + (d?.cards || []).filter((c) => c.nextReview <= Date.now()).length,
@@ -219,6 +222,45 @@ export function Sidebar({
             </div>
           </Link>
         </div>
+
+        {/* Courses List Quick Access */}
+        {safeCourses.length > 0 && (
+          <div className="px-3 pt-2">
+            <div className="flex items-center justify-between px-3 pb-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Local Courses ({safeCourses.length})
+              </span>
+            </div>
+
+            <div className="space-y-0.5 max-h-32 overflow-y-auto pr-1 mb-2">
+              {safeCourses.map((course: Course) => (
+                <div key={course.id} className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all border border-transparent hover:bg-indigo-50/80 group">
+                  <Link
+                    to={`/course/${course.id}`}
+                    onClick={onCloseMobile}
+                    className="flex-1 flex items-center gap-2.5 truncate cursor-pointer text-slate-600 hover:text-indigo-700 font-medium py-0.5"
+                  >
+                    <GraduationCap className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <span className="truncate">{course.title}</span>
+                  </Link>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (window.confirm('Are you sure you want to remove this course from your workspace?')) {
+                        deleteCourse(course.id);
+                      }
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-100 rounded-lg transition-all cursor-pointer ml-1"
+                    title="Remove Course"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Folders List Quick Access */}
         <div className="px-3 pt-2">

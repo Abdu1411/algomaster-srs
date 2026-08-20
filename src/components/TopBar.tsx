@@ -10,7 +10,8 @@ import {
   PenTool,
   Flame,
   ChevronDown,
-  X
+  X,
+  GraduationCap
 } from 'lucide-react';
 import { useDecks } from '../store';
 
@@ -22,6 +23,7 @@ interface TopBarProps {
   onOpenAskAi: () => void;
   onOpenNewFolder: () => void;
   onOpenLiveModal: () => void;
+  onOpenImportCourse: () => void;
   onNavigateTab: (tab: WorkspaceTab) => void;
 }
 
@@ -31,6 +33,7 @@ export function TopBar({
   onOpenAskAi,
   onOpenNewFolder,
   onOpenLiveModal,
+  onOpenImportCourse,
   onNavigateTab
 }: TopBarProps) {
   const { stats } = useDecks();
@@ -159,6 +162,22 @@ export function TopBar({
                 <div>
                   <span className="text-xs font-bold text-slate-800 block">Live Lecture Stream</span>
                   <span className="text-[10px] text-slate-400 block font-sans">Attach YouTube video masterclass</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  onOpenImportCourse();
+                  setIsNewMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-3 p-2 rounded-xl text-left hover:bg-slate-100 transition-colors cursor-pointer group"
+              >
+                <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center border border-slate-200 shadow-2xs group-hover:scale-105 transition-transform">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">Import Local Course</span>
+                  <span className="text-[10px] text-slate-400 block font-sans">Read OCW/static course folders</span>
                 </div>
               </button>
             </div>
