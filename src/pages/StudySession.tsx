@@ -17,6 +17,7 @@ import { useActiveView } from '../context/ActiveViewContext';
 
 interface SessionCard extends Card {
   deckId: string;
+  isRequeued?: boolean;
 }
 
 /**
@@ -278,8 +279,14 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
 
     setCompletedCount(prev => prev + 1);
 
+    if (grade === 'Again' && currentCard) {
+      // Re-queue card to be reviewed again in this same study session (Anki SM-2 style)
+      const requeuedCard: SessionCard = { ...currentCard, isRequeued: true };
+      setSessionCards(prev => [...prev, requeuedCard]);
+    }
+
     // Move to next card
-    if (currentIndex < sessionCards.length - 1) {
+    if (currentIndex < sessionCards.length - 1 || grade === 'Again') {
       setCurrentIndex(prev => prev + 1);
       setShowAnswer(false);
       setCode('');
@@ -357,9 +364,18 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
           >
             <Sliders className="w-3.5 h-3.5" /> Options
           </button>
-          <span className="text-xs font-mono font-bold text-slate-700 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-2xs">
-            {currentIndex + 1} / {sessionCards.length}
-          </span>
+          
+          <div className="flex items-center gap-1.5">
+            {currentCard?.isRequeued && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
+                <span>🔄</span>
+                <span>Repeat Queue</span>
+              </span>
+            )}
+            <span className="text-xs font-mono font-bold text-slate-700 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-2xs">
+              {currentIndex + 1} / {sessionCards.length} <span className="text-slate-400">({sessionCards.length - currentIndex} left)</span>
+            </span>
+          </div>
         </div>
       </div>
 
@@ -388,6 +404,12 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200/60">
                   Dart 3.x
                 </span>
+                {currentCard.isRequeued && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
+                    <span>🔄</span>
+                    <span>Re-learning</span>
+                  </span>
+                )}
                 {isAllDecks && originDeck && (
                   <span className="text-[11px] font-sans font-medium text-slate-500 truncate max-w-[180px]">
                     [{originDeck.title}]
