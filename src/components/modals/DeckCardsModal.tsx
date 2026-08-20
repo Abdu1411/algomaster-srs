@@ -12,7 +12,7 @@ import {
   CheckCircle2,
   Code2
 } from 'lucide-react';
-import { Deck, Card, CardType } from '../../types';
+import { Deck, Card, CardType, ARCHETYPE_CONFIG } from '../../types';
 import { EditCardModal } from './EditCardModal';
 
 interface DeckCardsModalProps {
@@ -181,9 +181,16 @@ export function DeckCardsModal({
                       <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
                         #{idx + 1}
                       </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                        {card.type}
-                      </span>
+                      {(() => {
+                        const cardType = card.type || 'Concept';
+                        const typeMeta = ARCHETYPE_CONFIG[cardType] || ARCHETYPE_CONFIG.Concept;
+                        return (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${typeMeta.bg} ${typeMeta.text} ${typeMeta.border} border inline-flex items-center gap-1 shadow-2xs`}>
+                            <span>{typeMeta.icon}</span>
+                            <span>{typeMeta.label}</span>
+                          </span>
+                        );
+                      })()}
                       {card.reps > 0 && (
                         <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
                           <Calendar className="w-3 h-3 text-slate-400" />

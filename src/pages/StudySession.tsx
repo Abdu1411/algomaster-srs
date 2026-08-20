@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useDecks } from '../store';
 import { calculateNextReview, Grade } from '../srs';
-import { Card, CardType } from '../types';
+import { Card, CardType, ARCHETYPE_CONFIG } from '../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -338,48 +338,61 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
       </div>
 
       {/* Main Flashcard */}
-      <div className="bg-white rounded-3xl shadow-[0_12px_45px_rgba(0,0,0,0.06)] border border-slate-200/90 overflow-hidden relative">
-        {/* Card Header (Type Badge & Deck info) */}
-        <div className="px-8 py-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center relative z-10">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
-              {currentCard.type}
-            </span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200/60">
-              Dart 3.x
-            </span>
-            {isAllDecks && originDeck && (
-              <span className="text-[11px] font-sans font-medium text-slate-500 truncate max-w-[180px]">
-                [{originDeck.title}]
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsEditModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs"
-              title="Edit this flashcard"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span>Edit Card</span>
-            </button>
-            <span className="text-slate-400 font-mono text-[10px]">ID: {currentCard.id.split('-')[0].toUpperCase()}</span>
-          </div>
-        </div>
+      {currentCard && (() => {
+        const cardType = currentCard.type || 'Concept';
+        const typeMeta = ARCHETYPE_CONFIG[cardType] || ARCHETYPE_CONFIG.Concept;
 
-        {/* Front Question Content */}
-        <div className="px-8 py-10 relative z-10">
-          <div className="prose prose-slate prose-blue max-w-none text-slate-800 leading-relaxed font-sans mb-6">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-              components={{ code: MarkdownCodeRenderer }}
-            >
-              {currentCard.type === 'Cloze' || currentCard.front.includes('{{')
-                ? formatClozeQuestion(currentCard.front)
-                : currentCard.front}
-            </ReactMarkdown>
-          </div>
+        return (
+          <div className="bg-white rounded-3xl shadow-[0_12px_45px_rgba(0,0,0,0.06)] border border-slate-200/90 overflow-hidden relative">
+            {/* Card Header (Type Badge & Deck info) */}
+            <div className="px-8 py-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center relative z-10">
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider ${typeMeta.bg} ${typeMeta.text} ${typeMeta.border} border shadow-2xs`}>
+                  <span>{typeMeta.icon}</span>
+                  <span>{typeMeta.label}</span>
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200/60">
+                  Dart 3.x
+                </span>
+                {isAllDecks && originDeck && (
+                  <span className="text-[11px] font-sans font-medium text-slate-500 truncate max-w-[180px]">
+                    [{originDeck.title}]
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs"
+                  title="Edit this flashcard"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Card</span>
+                </button>
+                <span className="text-slate-400 font-mono text-[10px]">ID: {currentCard.id.split('-')[0].toUpperCase()}</span>
+              </div>
+            </div>
+
+            {/* Front Question Content */}
+            <div className="px-8 py-10 relative z-10">
+              {/* Type Category Indicator */}
+              <div className="mb-4 inline-flex items-center gap-2 px-3 py-1 rounded-xl text-xs font-bold bg-slate-50 border border-slate-200 text-slate-700 shadow-2xs">
+                <span>{typeMeta.icon}</span>
+                <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Archetype:</span>
+                <span className={`font-black ${typeMeta.text}`}>{typeMeta.label}</span>
+              </div>
+
+              <div className="prose prose-slate prose-blue max-w-none text-slate-800 leading-relaxed font-sans mb-6">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{ code: MarkdownCodeRenderer }}
+                >
+                  {currentCard.type === 'Cloze' || currentCard.front.includes('{{')
+                    ? formatClozeQuestion(currentCard.front)
+                    : currentCard.front}
+                </ReactMarkdown>
+              </div>
 
           {currentCard.codeSnippet && !isImplementationCard && (
             <div className="mt-4 mb-2">
@@ -532,7 +545,9 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
             </div>
           </div>
         ) : null}
-      </div>
+            </div>
+          );
+        })()}
 
       {/* Custom Study Modal */}
       <CustomStudyModal
