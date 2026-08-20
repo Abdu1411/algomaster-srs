@@ -65,12 +65,16 @@ export const YouTubeEmbed = forwardRef<YouTubePlayerHandle, YouTubeEmbedProps>(
     const onTimeUpdateRef = useRef(onTimeUpdate);
     onTimeUpdateRef.current = onTimeUpdate;
 
-    const extractId = useCallback((url: string) => {
-      const match = url.match(/[?&]v=([^&#]*)/) || url.match(/youtu\.be\/([^?&#]+)/);
-      return match ? match[1] : url;
+    const extractIds = useCallback((url: string) => {
+      const videoMatch = url.match(/[?&]v=([^&#]*)/) || url.match(/youtu\.be\/([^?&#]+)/);
+      const listMatch = url.match(/[?&]list=([^&#]*)/);
+      return {
+        videoId: videoMatch ? videoMatch[1] : (listMatch ? '' : url),
+        listId: listMatch ? listMatch[1] : null
+      };
     }, []);
 
-    const videoId = extractId(videoUrl);
+    const { videoId, listId } = extractIds(videoUrl);
 
     useImperativeHandle(ref, () => ({
       pause: () => {
@@ -127,6 +131,7 @@ export const YouTubeEmbed = forwardRef<YouTubePlayerHandle, YouTubeEmbedProps>(
               modestbranding: 1,
               enablejsapi: 1,
               start: startSeconds > 0 ? startSeconds : undefined,
+              ...(listId ? { listType: 'playlist', list: listId } : {})
             },
             events: {
               onReady: (event: any) => {

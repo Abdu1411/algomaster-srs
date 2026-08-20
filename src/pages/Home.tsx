@@ -51,6 +51,7 @@ export function Home() {
     deleteFolder,
     moveDeckToFolder,
     addLesson,
+    addLessonsBulk,
     deleteLesson,
     moveLessonToFolder
   } = useDecks();
@@ -209,6 +210,29 @@ Lecture Notes (${safeLessons.length}): ${safeLessons.map((l) => `"${l.title}" [$
     navigate(`/lesson/${newLesson.id}`);
   };
 
+  // Bulk HTML Course Import
+  const handleBulkCreateLiveLectures = async (courseName: string, lectures: { title: string; url: string }[]) => {
+    // 1. Create the folder (course)
+    const newFolder = await addFolder(courseName);
+
+    // 2. Create the lessons
+    const now = Date.now();
+    const newLessons: Lesson[] = lectures.map(lec => ({
+      id: crypto.randomUUID(),
+      title: lec.title,
+      topic: courseName,
+      videoUrl: lec.url,
+      folderId: newFolder.id,
+      content: `# ${lec.title}\n\nBulk imported lecture from ${courseName}.\n\n### Video Link:\n[Watch Lecture](${lec.url})`,
+      createdAt: now
+    }));
+
+    await addLessonsBulk(newLessons);
+    
+    // Navigate to the newly created folder view in lessons tab
+    setSearchParams({ tab: 'lessons', folder: newFolder.id });
+  };
+
   return (
     <div className="min-h-screen flex bg-[#F8FAFC]">
       {/* Collapsible Workspace Sidebar */}
@@ -300,9 +324,15 @@ Lecture Notes (${safeLessons.length}): ${safeLessons.map((l) => `"${l.title}" [$
             <LiveLecturesView
               lessons={safeLessons}
               folders={safeFolders}
+              activeFolderId={activeFolderId}
               onOpenCreateLive={() => setIsLiveModalOpen(true)}
               onOpenMoveLesson={(l) => setLessonToMove(l)}
               onDeleteLesson={(id) => deleteLesson(id)}
+              onOpenRenameFolder={(f) => {
+                setFolderToEdit(f);
+                setIsNewFolderOpen(true);
+              }}
+              onOpenDeleteFolder={(f) => setFolderToDelete(f)}
             />
           )}
 
@@ -374,6 +404,7 @@ Lecture Notes (${safeLessons.length}): ${safeLessons.map((l) => `"${l.title}" [$
         onClose={() => setIsLiveModalOpen(false)}
         folders={safeFolders}
         onCreate={handleCreateLiveLecture}
+        onBulkCreate={handleBulkCreateLiveLectures}
       />
 
       <ImportPDFModal

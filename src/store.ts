@@ -169,6 +169,10 @@ export function useDecks() {
     await db.lessons.add(lesson);
   };
 
+  const addLessonsBulk = async (newLessons: Lesson[]) => {
+    await db.lessons.bulkAdd(newLessons);
+  };
+
   const updateLesson = async (lesson: Lesson) => {
     await db.lessons.put(lesson);
   };
@@ -330,6 +334,7 @@ export function useDecks() {
     deleteFolder,
     moveDeckToFolder,
     addLesson,
+    addLessonsBulk,
     updateLesson,
     deleteLesson,
     renameLesson,

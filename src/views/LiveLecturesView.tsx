@@ -9,7 +9,8 @@ import {
   ExternalLink,
   Trash2,
   FolderGit2,
-  Folder as FolderIcon
+  Folder as FolderIcon,
+  Edit2
 } from 'lucide-react';
 import { Lesson, Folder } from '../types';
 
@@ -19,6 +20,9 @@ interface LiveLecturesViewProps {
   onOpenCreateLive: () => void;
   onOpenMoveLesson: (lesson: Lesson) => void;
   onDeleteLesson: (lessonId: string) => void;
+  activeFolderId: string | null;
+  onOpenRenameFolder?: (folder: Folder) => void;
+  onOpenDeleteFolder?: (folder: Folder) => void;
 }
 
 export function LiveLecturesView({
@@ -26,7 +30,10 @@ export function LiveLecturesView({
   folders,
   onOpenCreateLive,
   onOpenMoveLesson,
-  onDeleteLesson
+  onDeleteLesson,
+  activeFolderId,
+  onOpenRenameFolder,
+  onOpenDeleteFolder
 }: LiveLecturesViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -46,20 +53,52 @@ export function LiveLecturesView({
     return match ? match[1] : null;
   };
 
+  const groupedLessons = useMemo(() => {
+    const grouped: Record<string, Lesson[]> = {};
+    liveLessons.forEach(l => {
+      const key = l.folderId || 'unfiled';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(l);
+    });
+
+    // Sort lessons naturally by title (e.g. "Lecture 2" before "Lecture 10")
+    for (const key in grouped) {
+      grouped[key].sort((a, b) => {
+        const titleA = a.title || '';
+        const titleB = b.title || '';
+        return titleA.localeCompare(titleB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+    }
+
+    return grouped;
+  }, [liveLessons]);
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/95 border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-xs backdrop-blur-md">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold text-slate-400 mb-1">
-            <span>Library</span>
+            {activeFolderId ? (
+              <Link to="?tab=live" className="hover:text-rose-600 transition-colors cursor-pointer">
+                Live Lectures
+              </Link>
+            ) : (
+              <span>Library</span>
+            )}
             <span>/</span>
-            <span className="text-rose-700">Live Lectures</span>
+            <span className="text-rose-700">
+              {activeFolderId 
+                ? (folders.find(f => f.id === activeFolderId)?.name || 'Unfiled Lectures')
+                : 'Live Lectures'}
+            </span>
           </div>
 
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
             <Video className="w-6 h-6 text-rose-600" />
-            Live Lectures & Video Streams
+            {activeFolderId 
+                ? (folders.find(f => f.id === activeFolderId)?.name || 'Unfiled Lectures')
+                : 'Live Lectures & Video Streams'}
           </h1>
           <p className="text-xs text-slate-500 font-sans mt-0.5">
             Interactive video masterclasses with synchronized code notes and term breakdowns
@@ -115,87 +154,140 @@ export function LiveLecturesView({
             Add First Live Stream
           </button>
         </div>
-      ) : (
+      ) : !activeFolderId ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {liveLessons.map((lesson) => {
-            const parentFolder = folders.find((f) => f.id === lesson.folderId);
-            const ytId = lesson.videoUrl ? extractYtId(lesson.videoUrl) : null;
-            const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
-
+          {Object.entries(groupedLessons).map(([folderId, folderLessons]) => {
+            const folder = folders.find((f) => f.id === folderId);
             return (
-              <div
-                key={lesson.id}
-                className="group relative bg-white/95 rounded-3xl shadow-xs border border-slate-200/90 overflow-hidden flex flex-col justify-between transition-all duration-300 hover:border-rose-300 hover:shadow-md hover:-translate-y-0.5"
+              <Link
+                key={folderId}
+                to={`?tab=live&folder=${folderId}`}
+                className="group bg-white/95 rounded-3xl shadow-xs border border-slate-200/90 p-8 flex flex-col items-center justify-center text-center transition-all duration-300 hover:border-rose-300 hover:shadow-md hover:-translate-y-1 cursor-pointer"
               >
-                <div>
-                  {thumbUrl ? (
-                    <Link to={`/lesson/${lesson.id}`} className="relative block aspect-video bg-slate-900 overflow-hidden">
-                      <img
-                        src={thumbUrl}
-                        alt={lesson.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-slate-950/30 group-hover:bg-slate-950/10 transition-colors flex items-center justify-center">
-                        <div className="w-12 h-12 rounded-2xl bg-rose-600/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                          <Play className="w-5 h-5 fill-current ml-0.5" />
-                        </div>
-                      </div>
-                    </Link>
-                  ) : (
-                    <div className="aspect-video bg-gradient-to-br from-slate-800 to-slate-950 flex items-center justify-center text-white p-4">
-                      <Video className="w-10 h-10 text-rose-500" />
-                    </div>
-                  )}
-
-                  <div className="p-5">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                        {lesson.topic}
-                      </span>
-                      {parentFolder && (
-                        <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
-                          <FolderIcon className="w-3 h-3 text-blue-500" />
-                          {parentFolder.name}
-                        </span>
-                      )}
-                    </div>
-
-                    <Link to={`/lesson/${lesson.id}`} className="block group-hover:text-rose-600 transition-colors">
-                      <h3 className="font-bold text-sm text-slate-900 line-clamp-2 leading-snug">
-                        {lesson.title}
-                      </h3>
-                    </Link>
-                  </div>
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 flex items-center justify-center border border-rose-100 shadow-inner mb-5 group-hover:scale-110 transition-transform duration-500">
+                  <FolderIcon className="w-10 h-10 text-rose-500 fill-rose-500/20" />
                 </div>
-
-                <div className="p-5 pt-0 flex items-center justify-between border-t border-slate-100 mt-2">
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => onOpenMoveLesson(lesson)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
-                      title="Move to Folder"
-                    >
-                      <FolderGit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => onDeleteLesson(lesson.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
-                      title="Delete Lecture"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <Link
-                    to={`/lesson/${lesson.id}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all"
-                  >
-                    Watch & Notes <Play className="w-3 h-3 fill-current" />
-                  </Link>
-                </div>
-              </div>
+                <h3 className="font-black text-lg text-slate-900 group-hover:text-rose-600 transition-colors mb-2">
+                  {folder ? folder.name : 'Unfiled Lectures'}
+                </h3>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-500 group-hover:bg-rose-50 group-hover:text-rose-600 transition-colors">
+                  <Video className="w-3.5 h-3.5" />
+                  {folderLessons.length} {folderLessons.length === 1 ? 'lecture' : 'lectures'}
+                </span>
+              </Link>
             );
           })}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-100">
+            <Link to="?tab=live" className="text-sm font-bold text-slate-500 hover:text-rose-600 transition-colors flex items-center gap-1">
+              <span className="text-lg leading-none">&larr;</span> Back to Folders
+            </Link>
+
+            {activeFolderId && activeFolderId !== 'unfiled' && (
+              <div className="flex items-center gap-2">
+                {onOpenRenameFolder && (
+                  <button
+                    onClick={() => {
+                      const folder = folders.find((f) => f.id === activeFolderId);
+                      if (folder) onOpenRenameFolder(folder);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    Rename Course
+                  </button>
+                )}
+                {onOpenDeleteFolder && (
+                  <button
+                    onClick={() => {
+                      const folder = folders.find((f) => f.id === activeFolderId);
+                      if (folder) onOpenDeleteFolder(folder);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Course
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {(groupedLessons[activeFolderId] || []).map((lesson) => {
+              const ytId = lesson.videoUrl ? extractYtId(lesson.videoUrl) : null;
+              const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
+
+              return (
+                <div
+                  key={lesson.id}
+                  className="group relative bg-white/95 rounded-3xl shadow-xs border border-slate-200/90 overflow-hidden flex flex-col justify-between transition-all duration-300 hover:border-rose-300 hover:shadow-md hover:-translate-y-0.5"
+                >
+                  <div>
+                    {thumbUrl ? (
+                      <Link to={`/lesson/${lesson.id}`} className="relative block aspect-video bg-slate-900 overflow-hidden">
+                        <img
+                          src={thumbUrl}
+                          alt={lesson.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-slate-950/30 group-hover:bg-slate-950/10 transition-colors flex items-center justify-center">
+                          <div className="w-12 h-12 rounded-2xl bg-rose-600/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                            <Play className="w-5 h-5 fill-current ml-0.5" />
+                          </div>
+                        </div>
+                      </Link>
+                    ) : (
+                      <div className="aspect-video bg-gradient-to-br from-slate-800 to-slate-950 flex items-center justify-center text-white p-4">
+                        <Video className="w-10 h-10 text-rose-500" />
+                      </div>
+                    )}
+
+                    <div className="p-5">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          {lesson.topic}
+                        </span>
+                      </div>
+
+                      <Link to={`/lesson/${lesson.id}`} className="block group-hover:text-rose-600 transition-colors">
+                        <h3 className="font-bold text-sm text-slate-900 line-clamp-2 leading-snug">
+                          {lesson.title}
+                        </h3>
+                      </Link>
+                    </div>
+                  </div>
+
+                  <div className="p-5 pt-0 flex items-center justify-between border-t border-slate-100 mt-2">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => onOpenMoveLesson(lesson)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                        title="Move to Folder"
+                      >
+                        <FolderGit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onDeleteLesson(lesson.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                        title="Delete Lecture"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <Link
+                      to={`/lesson/${lesson.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all"
+                    >
+                      Watch & Notes <Play className="w-3 h-3 fill-current" />
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
