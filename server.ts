@@ -202,7 +202,11 @@ app.post('/api/generate-deck', async (req, res) => {
          - Use clean Markdown styling with bolding, lists, headers, and inline code (\`...\`).
          - All code MUST be 100% valid, idiomatic Dart 3.x inside \`\`\`dart ... \`\`\` blocks with sound null safety.
       
-      3. APPROPRIATE CARD TYPES (Choose the best ${targetCardCount} archetypes for this segment):
+      3. CRITICAL CODE-IN-QUESTION INCLUSION RULE:
+         - When asking about anything related to code (e.g. tracing execution, identifying bugs, finding Big-O complexity, loop invariants, or method behavior), you MUST include the relevant Dart code directly in the "front" (question) field inside a formatted \`\`\`dart ... \`\`\` block.
+         - The code provided in the question must provide the context to reason about WITHOUT giving away the answer/solution being tested.
+      
+      4. APPROPRIATE CARD TYPES (Choose the best ${targetCardCount} archetypes for this segment):
          - 'Concept': Deep conceptual intuition and "Why".
          - 'Complexity': Precise Time & Space complexity using LaTeX math ($O(...)$).
          - 'Pattern': Problem recognition and when to apply this technique in Dart.
@@ -237,6 +241,10 @@ app.post('/api/generate-deck', async (req, res) => {
       CRITICAL UNIVERSAL CONVERSION RULE - 100% DART CODE:
       - Translate all code 100% into clean, idiomatic, modern Dart 3.x (with sound null safety, strong typing).
       - Use LaTeX math notation ($O(N \\log N)$, etc.) for all complexity bounds.
+      
+      CRITICAL CODE-IN-QUESTION INCLUSION RULE:
+      - When asking about anything related to code (e.g. analyzing time/space complexity of a function, tracing execution, finding a bug, loop invariants, or explaining how an algorithm works), you MUST provide the relevant Dart code snippet directly in the "front" (question) field within a formatted \`\`\`dart ... \`\`\` code block.
+      - Ensure the code provided in the question gives the necessary context for the question WITHOUT revealing or giving away the core answer/solution that the student needs to provide.
       
       CRITICAL ARCHETYPE ENFORCEMENT - IMPLEMENTATION CARDS:
       - If a card asks the user to write, complete, construct, or implement code of ANY type (e.g. "Implement a function...", "Write a Dart class for...", "Write code to...", "Complete the Dart method..."), its archetype type MUST be set to "Implementation".
@@ -625,14 +633,17 @@ app.post('/api/format-card-archetype', async (req, res) => {
     
     ARCHETYPE REQUIREMENTS:
     - Concept: "Why" & core intuition. Front poses an active recall question. Back provides concise, authoritative explanation.
-    - Complexity: Big-O analysis. Front asks for time/space complexity and worst-case bounds. Back gives exact Big-O and mathematical proof ($O(N)$, $O(\\log N)$).
+    - Complexity: Big-O analysis. Front asks for time/space complexity and worst-case bounds. If analyzing a code snippet, provide the snippet in the front without revealing the answer. Back gives exact Big-O and mathematical proof ($O(N)$, $O(\\log N)$).
     - Pattern: Recognition of algorithmic patterns (Two Pointers, Monotonic Queue, Sliding Window, Bit Manipulation, etc.).
     - Cloze: Fill-in-the-blank active recall using {{c1::key term or formula}} in the front question for the key invariant, formula, or method call.
     - Comparison: Structured head-to-head comparison highlighting time/space trade-offs between two approaches.
-    - Trace: Step-by-step state simulation or recursion tree trace.
+    - Trace: Step-by-step state simulation or recursion tree trace with code snippet provided in front.
     - Invariant: Loop or structural invariants that guarantee correctness.
-    - Debugging: A subtle bug trap, edge case, or Dart null-safety pitfall with correction.
+    - Debugging: A subtle bug trap, edge case, or Dart null-safety pitfall with buggy code snippet in front and correction in back.
     - Implementation: A coding challenge in modern idiomatic Dart with starter signature and test assertions.
+    
+    CRITICAL CODE-IN-QUESTION RULE:
+    - Whenever asking anything related to code (e.g. complexity of a function, finding a bug, tracing state), include the relevant Dart code snippet in the "front" (question) field in a \`\`\`dart ... \`\`\` block, without revealing the answer.
     
     OUTPUT SCHEMA:
     Return a JSON object with:
