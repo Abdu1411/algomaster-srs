@@ -81,19 +81,85 @@ async function extractTextFromUrl(url: string) {
   }
 }
 
+const VALID_ARCHETYPES = new Set([
+  'Concept',
+  'Complexity',
+  'Pattern',
+  'Cloze',
+  'Comparison',
+  'Trace',
+  'Invariant',
+  'Debugging',
+  'Implementation'
+]);
+
 function normalizeCardArchetypes(cards: any[]): any[] {
   return cards.map(card => {
     if (!card || typeof card !== 'object') return card;
     const frontText = (card.front || '').trim();
+    let rawType = (card.type || '').trim();
 
-    // If card asks for an implementation of any type (write code, implement function/algorithm/class/method), ensure its archetype is 'Implementation'
-    const asksForImplementation =
-      /^(write|implement|create|code|complete|develop|build|construct|solve|program)\s+(a\s+|an\s+|the\s+)?(dart\s+)?(function|class|method|algorithm|solution|program|tree|graph|queue|stack|heap|code|snippet)\b/i.test(frontText) ||
-      /\b(implement\s+the\s+following|write\s+a\s+dart\s+function|write\s+code\s+to|code\s+the\s+algorithm|implement\s+in\s+dart|coding\s+challenge)\b/i.test(frontText);
+    // Match case-insensitively to valid archetype
+    let detectedType = Array.from(VALID_ARCHETYPES).find(
+      arch => arch.toLowerCase() === rawType.toLowerCase()
+    );
 
-    if (asksForImplementation && card.type !== 'Implementation') {
-      card.type = 'Implementation';
+    // 1. Cloze Deletion check
+    if (frontText.includes('{{') || rawType.toLowerCase().includes('cloze')) {
+      detectedType = 'Cloze';
     }
+    // 2. Implementation check (asks to write/implement code)
+    else if (
+      /^(write|implement|create|code|complete|develop|build|construct|solve|program)\s+(a\s+|an\s+|the\s+)?(dart\s+)?(function|class|method|algorithm|solution|program|tree|graph|queue|stack|heap|code|snippet)\b/i.test(frontText) ||
+      /\b(implement\s+the\s+following|write\s+a\s+dart\s+function|write\s+code\s+to|code\s+the\s+algorithm|implement\s+in\s+dart|coding\s+challenge)\b/i.test(frontText)
+    ) {
+      detectedType = 'Implementation';
+    }
+    // 3. Complexity check (asks for Big-O / time / space bounds)
+    else if (
+      /\b(time\s+complexity|space\s+complexity|worst-case\s+time|best-case|average-case|big-o|asymptotic|O\(|\$\\mathcal\{O\}|\\Theta|tight\s+bound)\b/i.test(frontText) ||
+      rawType.toLowerCase().includes('complexity') ||
+      rawType.toLowerCase().includes('big-o')
+    ) {
+      detectedType = 'Complexity';
+    }
+    // 4. Debugging check (spot bug / edge case / fix error)
+    else if (
+      /\b(bug|debug|error|what\s+is\s+wrong|fix|flaw|pitfall|null\s+safety\s+issue|exception)\b/i.test(frontText) ||
+      rawType.toLowerCase().includes('debug')
+    ) {
+      detectedType = 'Debugging';
+    }
+    // 5. Comparison check (compare / trade-off / versus)
+    else if (
+      /\b(compare|difference\s+between|versus|\bvs\b|trade-off|when\s+to\s+use\s+.*instead\s+of)\b/i.test(frontText) ||
+      rawType.toLowerCase().includes('comparison')
+    ) {
+      detectedType = 'Comparison';
+    }
+    // 6. Invariant check (loop invariant, proof, mathematical property)
+    else if (
+      /\b(invariant|loop\s+invariant|correctness\s+proof|induction|termination\s+condition)\b/i.test(frontText) ||
+      rawType.toLowerCase().includes('invariant')
+    ) {
+      detectedType = 'Invariant';
+    }
+    // 7. Trace check (trace execution, recursion tree, state dry run)
+    else if (
+      /\b(trace|dry\s+run|step-by-step|what\s+does\s+the\s+following\s+return|output\s+of|execution\s+tree|recursion\s+tree)\b/i.test(frontText) ||
+      rawType.toLowerCase().includes('trace')
+    ) {
+      detectedType = 'Trace';
+    }
+    // 8. Pattern check (algorithmic pattern / technique trigger)
+    else if (
+      /\b(pattern|two\s+pointers|sliding\s+window|monotonic|dynamic\s+programming|divide\s+and\s+conquer|greedy|bfs|dfs|backtracking|technique\s+should)\b/i.test(frontText) ||
+      rawType.toLowerCase().includes('pattern')
+    ) {
+      detectedType = 'Pattern';
+    }
+
+    card.type = detectedType || 'Concept';
 
     return card;
   });
@@ -246,23 +312,30 @@ app.post('/api/generate-deck', async (req, res) => {
       - When asking about anything related to code (e.g. analyzing time/space complexity of a function, tracing execution, finding a bug, loop invariants, or explaining how an algorithm works), you MUST provide the relevant Dart code snippet directly in the "front" (question) field within a formatted \`\`\`dart ... \`\`\` code block.
       - Ensure the code provided in the question gives the necessary context for the question WITHOUT revealing or giving away the core answer/solution that the student needs to provide.
       
-      CRITICAL ARCHETYPE ENFORCEMENT - IMPLEMENTATION CARDS:
-      - If a card asks the user to write, complete, construct, or implement code of ANY type (e.g. "Implement a function...", "Write a Dart class for...", "Write code to...", "Complete the Dart method..."), its archetype type MUST be set to "Implementation".
-      - Any card that poses a coding challenge where the student writes code is an 'Implementation' card.
+      MANDATORY DIVERSE ARCHETYPE DISTRIBUTION:
+      You MUST generate a well-balanced deck containing diverse archetypes (NOT all "Concept"):
+      - "Concept" (2-3 cards): Core intuition, definitions & theoretical foundation.
+      - "Complexity" (2-3 cards): Time & Space Big-O analysis with LaTeX math ($O(N \\log N)$, etc.).
+      - "Pattern" (2-3 cards): Algorithmic pattern recognition (Sliding Window, Two Pointers, DFS/BFS, Monotonic Queue, etc.).
+      - "Cloze" (2-3 cards): Fill-in-the-blank blanks using {{c1::answer}} notation.
+      - "Implementation" (2-3 cards): Focused coding challenge asking the student to write a Dart function/class.
+      - "Comparison" (1-2 cards): Comparing two algorithms or data structures.
+      - "Invariant" (1-2 cards): Loop invariant or correctness proof.
+      - "Debugging" (1-2 cards): Spotting a bug or Dart null-safety pitfall.
+      - "Trace" (1-2 cards): Step-by-step state simulation or dry run.
       
-      CRITICAL DECK ARCHITECTURE - HIGH-YIELD CARDS:
-      Produce exactly ${targetCardCount} flashcards covering relevant archetypes:
-      1. Conceptual foundation ("Why" and core intuition)
-      2. Complexity analysis with LaTeX ($O(N)$, etc.)
-      3. Pattern recognition
-      4. Cloze deletions ({{c1::...}})
-      5. Comparison
-      6. Invariant / proof
-      7. Implementation prompts (any prompt asking to write Dart code)
-      8. Debugging prompts
-      
-      Format requirements:
-      Return a JSON object with a "cards" array containing ${targetCardCount} cards.
+      OUTPUT JSON SCHEMA:
+      Respond ONLY with a valid JSON object matching this schema:
+      {
+        "cards": [
+          {
+            "type": "Concept" | "Complexity" | "Pattern" | "Cloze" | "Comparison" | "Trace" | "Invariant" | "Debugging" | "Implementation",
+            "front": "Markdown and LaTeX question",
+            "back": "Detailed Markdown and LaTeX answer",
+            "codeSnippet": "Optional Dart code snippet"
+          }
+        ]
+      }
       
       TOPIC / CONTENT:
       Topic: ${effectiveTopic}
