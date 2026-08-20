@@ -163,7 +163,14 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
     loadCards();
   }, [decks, deckId, searchParams]);
 
-  const isImplementationCard = currentCard?.type === 'Implementation';
+  const isImplementationCard =
+    currentCard?.type === 'Implementation' ||
+    /^(write|implement|create|code|complete|develop|build|construct|solve|program)\s+(a\s+|an\s+|the\s+)?(dart\s+)?(function|class|method|algorithm|solution|program|tree|graph|queue|stack|heap|code|snippet)\b/i.test(
+      currentCard?.front || ''
+    ) ||
+    /\b(implement\s+the\s+following|write\s+a\s+dart\s+function|write\s+code\s+to|code\s+the\s+algorithm|implement\s+in\s+dart|coding\s+challenge)\b/i.test(
+      currentCard?.front || ''
+    );
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

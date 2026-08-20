@@ -81,6 +81,24 @@ async function extractTextFromUrl(url: string) {
   }
 }
 
+function normalizeCardArchetypes(cards: any[]): any[] {
+  return cards.map(card => {
+    if (!card || typeof card !== 'object') return card;
+    const frontText = (card.front || '').trim();
+
+    // If card asks for an implementation of any type (write code, implement function/algorithm/class/method), ensure its archetype is 'Implementation'
+    const asksForImplementation =
+      /^(write|implement|create|code|complete|develop|build|construct|solve|program)\s+(a\s+|an\s+|the\s+)?(dart\s+)?(function|class|method|algorithm|solution|program|tree|graph|queue|stack|heap|code|snippet)\b/i.test(frontText) ||
+      /\b(implement\s+the\s+following|write\s+a\s+dart\s+function|write\s+code\s+to|code\s+the\s+algorithm|implement\s+in\s+dart|coding\s+challenge)\b/i.test(frontText);
+
+    if (asksForImplementation && card.type !== 'Implementation') {
+      card.type = 'Implementation';
+    }
+
+    return card;
+  });
+}
+
 function safeParseJSONArray(rawText: string) {
   let text = (rawText || '').trim();
   if (text.startsWith('```')) {
@@ -93,13 +111,20 @@ function safeParseJSONArray(rawText: string) {
 
   try {
     const res = JSON.parse(text);
-    if (Array.isArray(res) && res.length > 0) return res;
-    if (res && typeof res === 'object') {
-      if (Array.isArray(res.cards) && res.cards.length > 0) return res.cards;
-      if (Array.isArray(res.data) && res.data.length > 0) return res.data;
-      const values = Object.values(res);
-      const foundArray = values.find(v => Array.isArray(v) && v.length > 0);
-      if (foundArray) return foundArray;
+    let cardsArray: any[] = [];
+    if (Array.isArray(res) && res.length > 0) cardsArray = res;
+    else if (res && typeof res === 'object') {
+      if (Array.isArray(res.cards) && res.cards.length > 0) cardsArray = res.cards;
+      else if (Array.isArray(res.data) && res.data.length > 0) cardsArray = res.data;
+      else {
+        const values = Object.values(res);
+        const foundArray = values.find(v => Array.isArray(v) && v.length > 0);
+        if (foundArray) cardsArray = foundArray as any[];
+      }
+    }
+
+    if (cardsArray.length > 0) {
+      return normalizeCardArchetypes(cardsArray);
     }
   } catch (e) {
     // Attempt to recover truncated JSON
@@ -109,7 +134,7 @@ function safeParseJSONArray(rawText: string) {
       try {
         const candidate = text.substring(firstBracket, lastObjectEnd + 1) + ']';
         const res2 = JSON.parse(candidate);
-        if (Array.isArray(res2) && res2.length > 0) return res2;
+        if (Array.isArray(res2) && res2.length > 0) return normalizeCardArchetypes(res2);
       } catch (err2) {
         // Fall through
       }
@@ -213,6 +238,10 @@ app.post('/api/generate-deck', async (req, res) => {
       - Translate all code 100% into clean, idiomatic, modern Dart 3.x (with sound null safety, strong typing).
       - Use LaTeX math notation ($O(N \\log N)$, etc.) for all complexity bounds.
       
+      CRITICAL ARCHETYPE ENFORCEMENT - IMPLEMENTATION CARDS:
+      - If a card asks the user to write, complete, construct, or implement code of ANY type (e.g. "Implement a function...", "Write a Dart class for...", "Write code to...", "Complete the Dart method..."), its archetype type MUST be set to "Implementation".
+      - Any card that poses a coding challenge where the student writes code is an 'Implementation' card.
+      
       CRITICAL DECK ARCHITECTURE - HIGH-YIELD CARDS:
       Produce exactly ${targetCardCount} flashcards covering relevant archetypes:
       1. Conceptual foundation ("Why" and core intuition)
@@ -221,7 +250,8 @@ app.post('/api/generate-deck', async (req, res) => {
       4. Cloze deletions ({{c1::...}})
       5. Comparison
       6. Invariant / proof
-      7. Debugging & Implementation prompts
+      7. Implementation prompts (any prompt asking to write Dart code)
+      8. Debugging prompts
       
       Format requirements:
       Return a JSON object with a "cards" array containing ${targetCardCount} cards.
