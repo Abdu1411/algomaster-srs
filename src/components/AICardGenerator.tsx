@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { Plus, Link2, BookOpen, Loader2, Sparkles, Code2, FolderGit2 } from 'lucide-react';
+import {
+  Plus,
+  Link2,
+  BookOpen,
+  Loader2,
+  Sparkles,
+  Code2,
+  FolderGit2,
+  Trash2,
+  Globe
+} from 'lucide-react';
 import { Card, Deck } from '../types';
 import { useDecks } from '../store';
 
@@ -9,21 +19,42 @@ interface AICardGeneratorProps {
 
 export function AICardGenerator({ onDeckGenerated }: AICardGeneratorProps) {
   const { folders } = useDecks();
-  const [url, setUrl] = useState('');
+  const [urls, setUrls] = useState<string[]>(['']);
   const [topic, setTopic] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string>('');
 
+  const handleAddUrl = () => {
+    setUrls(prev => [...prev, '']);
+  };
+
+  const handleUrlChange = (index: number, val: string) => {
+    setUrls(prev => {
+      const updated = [...prev];
+      updated[index] = val;
+      return updated;
+    });
+  };
+
+  const handleRemoveUrl = (index: number) => {
+    setUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url && !topic) return;
+    const validUrls = urls.map(u => u.trim()).filter(Boolean);
+    if (!validUrls.length && !topic.trim()) return;
 
     setIsGenerating(true);
     try {
       const response = await fetch('/api/generate-deck', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, topic })
+        body: JSON.stringify({
+          urls: validUrls,
+          url: validUrls[0] || undefined,
+          topic: topic.trim() || undefined
+        })
       });
       
       const responseText = await response.text();
@@ -44,14 +75,25 @@ export function AICardGenerator({ onDeckGenerated }: AICardGeneratorProps) {
 
       const generatedCards = Array.isArray(data) ? data : (data && data.cards) || [];
       if (!generatedCards.length) {
-        throw new Error('AI generated 0 cards. Please specify a more detailed Dart topic.');
+        throw new Error('AI generated 0 cards. Please specify a more detailed Dart topic or valid URLs.');
       }
       
       const now = Date.now();
 
+      let defaultTitle = 'New Dart Deck';
+      if (topic.trim()) {
+        defaultTitle = topic.trim();
+      } else if (validUrls[0]) {
+        try {
+          defaultTitle = new URL(validUrls[0]).hostname;
+        } catch {
+          defaultTitle = 'Synthesized Deck';
+        }
+      }
+
       const newDeck: Deck = {
         id: crypto.randomUUID(),
-        title: topic || (url ? new URL(url).hostname : 'New Dart Deck'),
+        title: defaultTitle,
         folderId: selectedFolderId || undefined,
         createdAt: now,
         cards: generatedCards.map((c: any) => ({
@@ -65,7 +107,7 @@ export function AICardGenerator({ onDeckGenerated }: AICardGeneratorProps) {
       };
 
       onDeckGenerated(newDeck);
-      setUrl('');
+      setUrls(['']);
       setTopic('');
     } catch (error: any) {
       console.error(error);
@@ -74,6 +116,8 @@ export function AICardGenerator({ onDeckGenerated }: AICardGeneratorProps) {
       setIsGenerating(false);
     }
   };
+
+  const hasAnyInput = topic.trim() || urls.some(u => u.trim());
 
   return (
     <section className="bg-white/90 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.04)] border border-slate-200/80 p-7 backdrop-blur-md relative overflow-hidden group hover:border-blue-300 transition-all hover:shadow-[0_8px_30px_rgba(37,99,235,0.06)]">
@@ -91,49 +135,76 @@ export function AICardGenerator({ onDeckGenerated }: AICardGeneratorProps) {
             </h1>
           </div>
           <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-50 text-blue-600 border border-blue-200">
-            Dart 3.x Engine
+            Dart 3.x SRS Engine
           </span>
         </div>
         <p className="text-xs text-slate-500 mb-6 font-sans">
-          Provide a Dart topic or paste an algorithm doc URL to instantly synthesize 30 cards across all 9 archetypes.
+          Provide a Dart topic, algorithm concept, or one or more documentation URLs to instantly synthesize a full 30-card spaced repetition deck.
         </p>
         
         <form onSubmit={handleGenerate} className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-3.5">
+          <div className="relative">
+            <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1.5">
+              Dart Topic or Algorithm Title
+            </label>
             <div className="relative">
-              <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1.5">
-                Dart Topic or Algorithm
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
-                  <Code2 className="w-4 h-4" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="e.g. Dart Binary Search Tree, Graph BFS"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800 placeholder-slate-400 font-sans text-xs"
-                />
+              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+                <Code2 className="w-4 h-4" />
               </div>
+              <input
+                type="text"
+                placeholder="e.g. Binary Search Trees, Graph BFS, Dart Concurrency & Isolates"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800 placeholder-slate-400 font-sans text-xs"
+              />
+            </div>
+          </div>
+
+          {/* Multiple Source URLs */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-bold flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-blue-600" />
+                Source URLs (Documentation, Articles, GitHub, Papers)
+              </label>
+              <button
+                type="button"
+                onClick={handleAddUrl}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Source URL
+              </button>
             </div>
 
-            <div className="relative">
-              <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1.5">
-                Algorithm Doc / Article URL (Optional)
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
-                  <Link2 className="w-4 h-4" />
+            <div className="space-y-2">
+              {urls.map((u, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+                      <Link2 className="w-3.5 h-3.5" />
+                    </div>
+                    <input
+                      type="url"
+                      placeholder={`Source ${idx + 1} URL (e.g. https://dart.dev/guides or wiki)`}
+                      value={u}
+                      onChange={(e) => handleUrlChange(idx, e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800 placeholder-slate-400 font-sans text-xs"
+                    />
+                  </div>
+                  {urls.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveUrl(idx)}
+                      className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                      title="Remove source"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
-                <input
-                  type="url"
-                  placeholder="https://dart.dev/guides or wiki link"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800 placeholder-slate-400 font-sans text-xs"
-                />
-              </div>
+              ))}
             </div>
           </div>
 
@@ -160,18 +231,18 @@ export function AICardGenerator({ onDeckGenerated }: AICardGeneratorProps) {
           <div className="pt-2 flex justify-end">
             <button
               type="submit"
-              disabled={isGenerating || (!url && !topic)}
+              disabled={isGenerating || !hasAnyInput}
               className="w-full sm:w-auto px-7 py-2.5 h-[42px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl transition-all shadow-[0_4px_16px_rgba(37,99,235,0.3)] hover:shadow-[0_6px_20px_rgba(37,99,235,0.4)] text-xs uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none inline-flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
             >
               {isGenerating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Synthesizing in Dart...
+                  Synthesizing 30 Cards in Dart...
                 </>
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
-                  Generate 30 Dart Cards
+                  Synthesize 30 Dart Cards
                 </>
               )}
             </button>

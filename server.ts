@@ -124,11 +124,20 @@ function safeParseJSONArray(rawText: string) {
 
 app.post('/api/generate-deck', async (req, res) => {
   try {
-    const { url, topic, rawText, startTime, endTime, count } = req.body;
+    const { url, urls, topic, rawText, startTime, endTime, count } = req.body;
     let contextText = '';
 
-    if (url) {
-      contextText = await extractTextFromUrl(url);
+    const allUrls: string[] = Array.isArray(urls)
+      ? urls.filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+      : (url && typeof url === 'string' && url.trim() ? [url.trim()] : []);
+
+    if (allUrls.length > 0) {
+      const results = await Promise.allSettled(allUrls.map(u => extractTextFromUrl(u)));
+      results.forEach((r, idx) => {
+        if (r.status === 'fulfilled' && r.value) {
+          contextText += `\n\n=== SOURCE ${idx + 1}: ${allUrls[idx]} ===\n${r.value}\n`;
+        }
+      });
     }
 
     if (rawText && typeof rawText === 'string' && rawText.trim()) {
@@ -141,7 +150,7 @@ app.post('/api/generate-deck', async (req, res) => {
 
     const effectiveTopic = (topic && topic.trim())
       ? topic.trim()
-      : (url ? 'Algorithms & Data Structures from provided URL' : 'Dart Data Structures and Algorithms Mastery');
+      : (allUrls[0] ? `Algorithms & Data Structures from ${allUrls[0]}` : 'Dart Data Structures and Algorithms Mastery');
 
     let systemPrompt = '';
     let userPrompt = '';
@@ -247,6 +256,103 @@ app.post('/api/generate-deck', async (req, res) => {
   } catch (error: any) {
     console.error('Generate Deck Error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate content with DeepSeek' });
+  }
+});
+
+app.post('/api/generate-lesson', async (req, res) => {
+  try {
+    const { url, urls, topic, rawText } = req.body;
+    let contextText = '';
+
+    const allUrls: string[] = Array.isArray(urls)
+      ? urls.filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+      : (url && typeof url === 'string' && url.trim() ? [url.trim()] : []);
+
+    if (allUrls.length > 0) {
+      const results = await Promise.allSettled(allUrls.map(u => extractTextFromUrl(u)));
+      results.forEach((r, idx) => {
+        if (r.status === 'fulfilled' && r.value) {
+          contextText += `\n\n=== SOURCE [${idx + 1}] (${allUrls[idx]}) ===\n${r.value}\n`;
+        }
+      });
+    }
+
+    if (rawText && typeof rawText === 'string' && rawText.trim()) {
+      contextText += `\n\n=== USER NOTES & LECTURE TRANSCRIPTS ===\n${rawText.trim().slice(0, 25000)}\n`;
+    }
+
+    const effectiveTopic = (topic && topic.trim())
+      ? topic.trim()
+      : (allUrls[0] ? `Computer Science Notes on ${allUrls[0]}` : 'Computer Science Algorithms & Systems');
+
+    const systemPrompt = 'You are an elite Computer Science Professor, Principal Software Engineer, and ACM Fellow. You write exhaustive, rigorous, textbook-grade lecture notes synthesizing multiple academic and documentation sources with formal LaTeX proofs, ASCII diagrams, and production Dart 3.x code.';
+
+    const userPrompt = `
+    Synthesize comprehensive, masterclass-level Computer Science Lecture Notes from the following sources, topic, and materials:
+    
+    Topic: ${effectiveTopic}
+    Sources: ${allUrls.join(', ') || 'Provided topic context'}
+    
+    Context & Source Material:
+    ${contextText ? contextText.slice(0, 35000) : 'Generate exhaustive academic lecture notes on this computer science topic.'}
+    
+    CRITICAL STRUCTURE & SECTION REQUIREMENTS:
+    1. # [Engaging, Authoritative Academic Title]
+    2. ## 1. Executive Overview & Mental Models
+       - Core intuition, the fundamental problem solved, and real-world system analogies.
+    3. ## 2. Theoretical Foundations & Mathematical Invariants
+       - Formal definitions and mathematical equations using LaTeX syntax ($O(N \\log N)$, recurrence relations, invariants).
+    4. ## 3. Step-by-Step Algorithmic Mechanics & Visual Trace
+       - Step-by-step walkthrough accompanied by clear ASCII diagrams or memory trace tables.
+    5. ## 4. Production Dart 3.x Implementation
+       - 100% sound null safety, strong typing, clean documentation comments, generics, and edge case handling in \`\`\`dart ... \`\`\` codeblocks.
+    6. ## 5. Rigorous Complexity Analysis (Time & Space)
+       - Formal Big-O proofs for Best, Average, and Worst cases with LaTeX math notation.
+    7. ## 6. Edge Cases, Pitfalls & Invariants
+       - Common traps, empty/null cases, overflow, and invariant preservation.
+    8. ## 7. High-Yield Flashcard Review Summary
+       - 3-5 core takeaways for spaced repetition review.
+    
+    Return ONLY a JSON object:
+    {
+      "title": "Comprehensive Lecture Note Title",
+      "topic": "${effectiveTopic}",
+      "sources": ${JSON.stringify(allUrls)},
+      "content": "Full markdown content with LaTeX math and Dart code"
+    }
+    `;
+
+    const completion = await deepseek.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: 4096,
+    });
+
+    const text = completion.choices[0]?.message?.content || '{}';
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = {
+        title: `${effectiveTopic} - Lecture Notes`,
+        topic: effectiveTopic,
+        sources: allUrls,
+        content: text
+      };
+    }
+
+    if (!parsed.sources || !Array.isArray(parsed.sources)) {
+      parsed.sources = allUrls;
+    }
+
+    res.json(parsed);
+  } catch (error: any) {
+    console.error('Generate Lesson Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate lecture notes' });
   }
 });
 

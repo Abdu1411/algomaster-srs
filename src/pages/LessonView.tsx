@@ -437,11 +437,11 @@ ${lesson.content}`,
       {/* Breadcrumb & Navigation */}
       <div className="flex items-center justify-between gap-4 mb-6">
         <Link
-          to={lesson.folderId ? `/?folder=${lesson.folderId}` : (lesson.videoUrl ? '/?view=live' : '/?view=lessons')}
+          to={lesson.folderId ? `/?tab=decks&folder=${lesson.folderId}` : (lesson.videoUrl ? '/?tab=live' : '/?tab=lessons')}
           className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors group"
         >
           <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-          {parentFolder ? `Back to 📁 ${parentFolder.name}` : (lesson.videoUrl ? 'Back to Live Lectures' : 'Back to Lessons')}
+          {parentFolder ? `Back to 📁 ${parentFolder.name}` : (lesson.videoUrl ? 'Back to Live Lectures' : 'Back to Lecture Notes')}
         </Link>
 
         <div className="flex items-center gap-2">
