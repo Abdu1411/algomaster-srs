@@ -450,7 +450,7 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
                 </ReactMarkdown>
               </div>
 
-          {currentCard.codeSnippet && !isImplementationCard && (
+          {currentCard.codeSnippet && !isImplementationCard && !currentCard.front.includes('```') && (
             <div className="mt-4 mb-2">
               <CodeBlock code={currentCard.codeSnippet} language="dart" />
             </div>

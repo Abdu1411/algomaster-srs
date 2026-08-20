@@ -161,6 +161,11 @@ function normalizeCardArchetypes(cards: any[]): any[] {
 
     card.type = detectedType || 'Concept';
 
+    // If front already embeds a code block, eliminate redundant codeSnippet field to prevent duplicate display
+    if (frontText.includes('```') && card.codeSnippet) {
+      delete card.codeSnippet;
+    }
+
     return card;
   });
 }
