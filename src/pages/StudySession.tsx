@@ -565,12 +565,12 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
                 </h3>
 
                 {(currentCard.type === 'Cloze' || currentCard.front.includes('{{')) ? (
-                  <div className="space-y-4 not-prose">
-                    <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl text-emerald-950 text-sm leading-relaxed shadow-2xs">
+                  <div className="not-prose">
+                    <div className="p-5 bg-emerald-50/80 border border-emerald-200 rounded-2xl text-emerald-950 text-sm leading-relaxed shadow-2xs">
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 block mb-1.5">
                         Revealed Statement:
                       </span>
-                      <div className="prose prose-sm prose-emerald max-w-none">
+                      <div className="prose prose-sm prose-emerald max-w-none text-slate-800 leading-relaxed font-sans">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm, remarkMath]}
                           rehypePlugins={[rehypeKatex]}
@@ -580,32 +580,6 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
                         </ReactMarkdown>
                       </div>
                     </div>
-
-                    {/* Only show Back if it provides extra contextual notes beyond repeating the cloze prompt */}
-                    {(() => {
-                      const cleanBack = currentCard.back.trim().toLowerCase();
-                      const cleanRevealed = formatClozeAnswer(currentCard.front).trim().toLowerCase();
-                      const rawFront = currentCard.front.trim().toLowerCase();
-
-                      // If back is not just duplicating front or revealed text
-                      if (cleanBack && cleanBack !== cleanRevealed && cleanBack !== rawFront) {
-                        return (
-                          <div className="pt-2 prose prose-slate prose-blue max-w-none text-xs text-slate-600">
-                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
-                              Explanation & Context:
-                            </span>
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeKatex]}
-                              components={{ code: MarkdownCodeRenderer }}
-                            >
-                              {currentCard.back}
-                            </ReactMarkdown>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
                   </div>
                 ) : (
                   <ReactMarkdown
