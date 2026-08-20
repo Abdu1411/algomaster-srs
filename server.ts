@@ -471,29 +471,36 @@ app.post('/api/scrub-lesson', async (req, res) => {
 
 app.post('/api/evaluate-code', async (req, res) => {
   try {
-    const { prompt, code, language = 'dart' } = req.body;
+    const { prompt, code, expectedSolution, language = 'dart' } = req.body;
 
     const evaluationPrompt = `
-    You are an expert technical interviewer and computer science professor specializing in Dart algorithms.
-    A student has submitted a Dart implementation for the following prompt:
+    You are an expert technical interviewer, ACM Fellow, and senior Dart 3.x engineer evaluating a student's code submission.
     
-    Prompt: ${prompt}
+    TASK / PROMPT:
+    ${prompt}
     
-    Student's Dart Code:
+    ${expectedSolution ? `OFFICIAL REFERENCE / EXPECTED SOLUTION:\n${expectedSolution}\n` : ''}
+    
+    STUDENT'S SUBMITTED DART 3.x CODE:
     \`\`\`dart
     ${code}
     \`\`\`
     
-    Evaluate the Dart code for algorithmic correctness, time/space complexity, and idiomatic Dart practices (null-safety, clean types).
-    Grade the submission honestly using one of these three grades:
-    - "Again" - Needs a hint, syntax broke, or got the core logic wrong.
-    - "Good" - Wrote it correctly in Dart, maybe with minor suboptimal nuances.
-    - "Easy" - Wrote it flawlessly, optimally, and idiomatically in Dart.
+    EVALUATION INSTRUCTIONS:
+    1. Correctness: Does the student's Dart logic correctly handle all core cases and boundary conditions?
+    2. Time & Space Complexity: Is the Big-O optimal ($O(...)$)?
+    3. Idiomatic Dart: Proper strong typing, sound null safety, efficient collections/methods.
+    4. Feedback: Write a clear, encouraging, structured review (1-2 paragraphs) in Markdown format highlighting strengths, edge cases, and line-by-line optimizations.
     
-    Return a JSON object with:
+    Grade the submission as one of:
+    - "Easy": Flawless, optimal logic with idiomatic Dart code.
+    - "Good": Correct logic, minor stylistic or minor suboptimal details.
+    - "Again": Broken syntax, logical error, infinite loop, or missed fundamental invariant.
+    
+    Respond ONLY with a valid JSON object:
     {
-      "grade": "Again" | "Good" | "Easy",
-      "feedback": "A short paragraph of constructive feedback in markdown format."
+      "grade": "Easy" | "Good" | "Again",
+      "feedback": "Markdown feedback with constructive analysis and tips"
     }
     `;
 
@@ -502,7 +509,7 @@ app.post('/api/evaluate-code', async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: 'You are an expert technical interviewer specializing in Dart. Respond ONLY with a valid JSON object containing "grade" and "feedback".'
+          content: 'You are an expert technical interviewer and Dart instructor. Respond ONLY with a valid JSON object containing "grade" and "feedback".'
         },
         {
           role: 'user',
@@ -513,7 +520,25 @@ app.post('/api/evaluate-code', async (req, res) => {
     });
 
     const text = completion.choices[0]?.message?.content || '{}';
-    res.json(JSON.parse(text));
+    let cleaned = text.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    }
+    
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      parsed = {
+        grade: 'Good',
+        feedback: text
+      };
+    }
+
+    if (!parsed.grade) parsed.grade = 'Good';
+    if (!parsed.feedback) parsed.feedback = text;
+
+    res.json(parsed);
   } catch (error: any) {
     console.error('Evaluate Code Error:', error);
     res.status(500).json({ error: error.message || 'Failed to evaluate code with DeepSeek' });

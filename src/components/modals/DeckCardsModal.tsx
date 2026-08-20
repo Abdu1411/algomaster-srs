@@ -269,6 +269,7 @@ export function DeckCardsModal({
             setIsCreatingCard(false);
           }}
           onSave={handleSaveEditedCard}
+          onDelete={!isCreatingCard ? (cardId) => onDeleteCard(deck.id, cardId) : undefined}
         />
       )}
     </>

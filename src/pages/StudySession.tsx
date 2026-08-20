@@ -47,7 +47,7 @@ export function StudySession() {
   const { deckId } = useParams<{ deckId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { decks, folders, updateCard, logReview } = useDecks();
+  const { decks, folders, updateCard, deleteCardFromDeck, logReview } = useDecks();
   const { setActiveResource, openAskAi } = useActiveView();
 
   const isAllDecks = deckId === 'all';
@@ -298,15 +298,26 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
       const res = await fetch('/api/evaluate-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: currentCard.front, code, language: 'dart' }),
+        body: JSON.stringify({
+          prompt: currentCard.front,
+          code,
+          expectedSolution: currentCard.back,
+          language: 'dart'
+        }),
       });
-      if (!res.ok) throw new Error('Evaluation failed');
       const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Evaluation failed');
+      }
       setEvalResult(data);
       setShowAnswer(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert('Failed to evaluate Dart code.');
+      setEvalResult({
+        grade: 'Good',
+        feedback: `### Submitted Implementation:\n\`\`\`dart\n${code}\n\`\`\`\n\n*(AI Evaluation note: ${error.message || 'Could not connect to evaluator'}. Please review against the official Dart solution below.)*`
+      });
+      setShowAnswer(true);
     } finally {
       setIsEvaluating(false);
     }
@@ -445,19 +456,30 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
                 </div>
               </div>
 
-              <button
-                onClick={handleSubmitCode}
-                disabled={isEvaluating || !code.trim()}
-                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_4px_16px_rgba(37,99,235,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none inline-flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {isEvaluating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Evaluating Dart Code with AI...
-                  </>
-                ) : (
-                  'Submit Dart Solution for Evaluation'
-                )}
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={handleSubmitCode}
+                  disabled={isEvaluating || !code.trim()}
+                  className="flex-1 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_4px_16px_rgba(37,99,235,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none inline-flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isEvaluating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Evaluating Dart Code with AI...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" /> Submit Dart Solution for Evaluation
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAnswer(true)}
+                  className="px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Skip to Solution
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -475,26 +497,34 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
           </div>
         ) : showAnswer ? (
           <div className="border-t border-slate-100 bg-slate-50/50 relative z-10 animate-fadeIn">
-            <div className="px-8 py-8 border-b border-slate-100">
-              <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-4">Dart Analysis & Solution</h3>
-
-              {isImplementationCard && evalResult ? (
-                <div className="space-y-4">
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 shadow-2xs text-xs font-bold">
-                    <span className="text-slate-500">AI Evaluation Grade:</span>
-                    <span
-                      className={`font-mono ${
-                        evalResult.grade === 'Easy'
-                          ? 'text-emerald-600'
-                          : evalResult.grade === 'Good'
-                          ? 'text-blue-600'
-                          : 'text-rose-600'
-                      }`}
-                    >
-                      {evalResult.grade}
-                    </span>
+            <div className="px-8 py-8 border-b border-slate-100 space-y-6">
+              {/* AI Evaluation Grade & Feedback Banner */}
+              {isImplementationCard && evalResult && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                        AI Code Evaluation Feedback
+                      </h4>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold shadow-2xs">
+                      <span className="text-slate-500">Grade:</span>
+                      <span
+                        className={`font-mono font-extrabold ${
+                          evalResult.grade === 'Easy'
+                            ? 'text-emerald-600'
+                            : evalResult.grade === 'Good'
+                            ? 'text-blue-600'
+                            : 'text-rose-600'
+                        }`}
+                      >
+                        {evalResult.grade}
+                      </span>
+                    </div>
                   </div>
-                  <div className="prose prose-sm prose-slate max-w-none bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+
+                  <div className="prose prose-sm prose-slate max-w-none bg-slate-50/70 p-4 rounded-xl border border-slate-100 leading-relaxed font-sans">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[rehypeKatex]}
@@ -504,28 +534,34 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
                     </ReactMarkdown>
                   </div>
                 </div>
-              ) : (
-                <div className="prose prose-slate prose-blue max-w-none bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
-                  {(currentCard.type === 'Cloze' || currentCard.front.includes('{{')) && (
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-sm">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm, remarkMath]}
-                        rehypePlugins={[rehypeKatex]}
-                        components={{ code: MarkdownCodeRenderer }}
-                      >
-                        {formatClozeAnswer(currentCard.front)}
-                      </ReactMarkdown>
-                    </div>
-                  )}
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                    components={{ code: MarkdownCodeRenderer }}
-                  >
-                    {currentCard.back}
-                  </ReactMarkdown>
-                </div>
               )}
+
+              {/* Official Solution & Analysis */}
+              <div className="prose prose-slate prose-blue max-w-none bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
+                <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-3 not-prose">
+                  {isImplementationCard ? 'Official Dart 3.x Solution & Invariant' : 'Dart Analysis & Solution'}
+                </h3>
+
+                {(currentCard.type === 'Cloze' || currentCard.front.includes('{{')) && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-sm not-prose">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{ code: MarkdownCodeRenderer }}
+                    >
+                      {formatClozeAnswer(currentCard.front)}
+                    </ReactMarkdown>
+                  </div>
+                )}
+
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{ code: MarkdownCodeRenderer }}
+                >
+                  {currentCard.back}
+                </ReactMarkdown>
+              </div>
             </div>
 
             {/* SRS Calibration Buttons */}
@@ -591,6 +627,18 @@ ${code ? `User's Current Code in Editor Workspace:\n\`\`\`dart\n${code}\n\`\`\`\
             setSessionCards(prev =>
               prev.map((c, i) => (i === currentIndex ? { ...updatedCard, deckId: c.deckId } : c))
             );
+          }}
+          onDelete={(cardId) => {
+            deleteCardFromDeck(currentCard.deckId, cardId);
+            setSessionCards(prev => {
+              const updated = prev.filter(c => c.id !== cardId);
+              if (updated.length === 0) {
+                setSessionFinished(true);
+              } else if (currentIndex >= updated.length) {
+                setCurrentIndex(updated.length - 1);
+              }
+              return updated;
+            });
           }}
         />
       )}

@@ -7,7 +7,8 @@ import {
   Check,
   RotateCcw,
   Layers,
-  HelpCircle
+  HelpCircle,
+  Trash2
 } from 'lucide-react';
 import { Card, CardType } from '../../types';
 
@@ -16,6 +17,7 @@ interface EditCardModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedCard: Card) => void;
+  onDelete?: (cardId: string) => void;
 }
 
 const ARCHETYPES: { type: CardType; label: string; icon: string; desc: string }[] = [
@@ -30,7 +32,7 @@ const ARCHETYPES: { type: CardType; label: string; icon: string; desc: string }[
   { type: 'Implementation', label: 'Implementation', icon: '💻', desc: 'Interactive Dart coding challenge' },
 ];
 
-export function EditCardModal({ card, isOpen, onClose, onSave }: EditCardModalProps) {
+export function EditCardModal({ card, isOpen, onClose, onSave, onDelete }: EditCardModalProps) {
   const [type, setType] = useState<CardType>('Concept');
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
@@ -241,22 +243,43 @@ export function EditCardModal({ card, isOpen, onClose, onSave }: EditCardModalPr
           </div>
 
           {/* Modal Footer */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!front.trim() || !back.trim()}
-              className="inline-flex items-center gap-1.5 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5" />
-              Save Changes
-            </button>
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2.5">
+            {onDelete ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Are you sure you want to permanently delete this flashcard?')) {
+                    onDelete(card.id);
+                    onClose();
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                title="Delete this flashcard"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Card</span>
+              </button>
+            ) : (
+              <div></div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!front.trim() || !back.trim()}
+                className="inline-flex items-center gap-1.5 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                Save Changes
+              </button>
+            </div>
           </div>
         </form>
       </div>
